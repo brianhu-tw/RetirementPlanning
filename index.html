@@ -124,7 +124,21 @@
   .chart-wrap.half { height: 420px; }
 
   .two-col { grid-template-columns: 1fr 1fr; }
-  @media (max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
+  @media (max-width: 900px) {
+    .two-col { grid-template-columns: 1fr; }
+    .chart-wrap.full { height: 350px; }
+    .container { padding: 1rem 0.75rem; }
+    header { padding: 2rem 0 0.75rem; margin-bottom: 1.5rem; }
+    section { margin-bottom: 2rem; }
+    .params { padding: 1rem; margin-bottom: 1.5rem; }
+    .chart-box { padding: 1rem 0.5rem; }
+    .conclusion { padding: 1rem; margin-bottom: 1.5rem; }
+    .metrics { gap: 0.75rem; margin-bottom: 1.5rem; }
+    .metric-card { padding: 1rem; }
+    .note-item { padding: 1rem; }
+    .notes-grid { gap: 0.75rem; }
+    .share-wrap { margin-bottom: 1.5rem; }
+  }
 
   /* ── Parameter Panel ── */
   .params {
@@ -210,7 +224,7 @@
   .share-hint {
     font-size: 0.72rem;
     color: var(--text-muted);
-    margin-top: 0.4rem;
+    margin-top: 0.75rem;
   }
 
   .toast {
@@ -303,7 +317,8 @@
     transition: opacity 0.2s;
     z-index: 10;
   }
-  .info-tip:hover::after {
+  .info-tip:hover::after,
+  .info-tip.active::after {
     opacity: 1;
   }
 
@@ -391,6 +406,7 @@
   <div class="chart-grid">
     <div class="chart-box">
       <div class="desc" id="c3Summary"></div>
+      <div class="desc" id="dragHint" style="color:var(--accent);margin-bottom:0.5rem;transition:opacity 0.5s;">💡 試試拖拉圖表上的紫色和綠色控制點</div>
       <div class="chart-wrap full"><canvas id="chart3"></canvas></div>
     </div>
   </div>
@@ -453,7 +469,7 @@
 
 function clamp(v, min, max) { return Math.min(max, Math.max(min, isNaN(v) ? min : v)); }
 function currentAge() { return clamp(+document.getElementById("p_age").value, 18, 80); }
-const CURRENT_YEAR = 2026;
+const CURRENT_YEAR = new Date().getFullYear();
 const AVG_LIFESPAN = 80;
 
 const LOANS = [];
@@ -729,7 +745,11 @@ Chart.register(belowZeroPlugin);
 
 const defaultScales = () => ({
   x: { grid: { color: gridColor }, ticks: { color: "#9ca3af" } },
-  y: { grid: { color: gridColor }, ticks: { color: "#9ca3af", callback: v => v.toLocaleString() + " 萬" } }
+  y: { grid: { color: gridColor }, ticks: { color: "#9ca3af", callback: function(v) {
+    const absMax = Math.max(Math.abs(this.max), Math.abs(this.min));
+    if (absMax >= 10000) return (v / 10000).toLocaleString() + " 億";
+    return v.toLocaleString() + " 萬";
+  }}}
 });
 
 // Shared interaction + tooltip + legend config injected into every chart
@@ -944,6 +964,13 @@ function c3BindEvents(canvas, chart) {
       c3Dragging = true; canvas.setPointerCapture(e.pointerId);
       canvas.style.cursor = "grabbing"; chart.draw();
     }
+    if (c3IncDragging || c3Dragging) {
+      const hint = document.getElementById("dragHint");
+      if (hint && hint.style.opacity !== "0") {
+        hint.style.opacity = "0";
+        hint.addEventListener("transitionend", () => { hint.style.visibility = "hidden"; }, { once: true });
+      }
+    }
   }, opt);
   canvas.addEventListener("pointermove", e => {
     const { x, y } = getXY(e);
@@ -1114,6 +1141,15 @@ document.querySelectorAll(".params input").forEach(input => {
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(recalculate, 300);
   });
+});
+
+// ── Tooltip: click to toggle on mobile ──
+document.addEventListener("click", e => {
+  const tip = e.target.closest(".info-tip");
+  document.querySelectorAll(".info-tip.active").forEach(el => {
+    if (el !== tip) el.classList.remove("active");
+  });
+  if (tip) tip.classList.toggle("active");
 });
 
 // Initial render
