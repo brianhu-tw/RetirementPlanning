@@ -19,7 +19,7 @@
 
 <meta name="description" content="填幾個數字，算算你的退休時間表。看看不同報酬率下，你的錢夠不夠花。">
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" integrity="sha384-vsrfeLOOY6KuIYKDlmVH5UiBmgIdB1oEf7p01YgWHuqmOHfZr374+odEv96n9tNC" crossorigin="anonymous"></script>
 <style>
   :root {
     --bg: #0f1117;
@@ -81,6 +81,7 @@
   .metric-card .value.accent { color: var(--accent); }
   .metric-card .value.amber { color: var(--accent2); }
   .metric-card .value.pink { color: var(--pink); }
+  .metric-card .value.red { color: #e74c3c; }
 
   /* ── Sections ── */
   section { margin-bottom: 3rem; }
@@ -488,8 +489,6 @@ function currentAge() { return clamp(+document.getElementById("p_age").value, 18
 const CURRENT_YEAR = new Date().getFullYear();
 const AVG_LIFESPAN = 80;
 
-const LOANS = [];
-
 // ── Thousand-separator helpers ──
 function stripCommas(s) { return s.replace(/,/g, ""); }
 function addCommas(n) {
@@ -575,6 +574,12 @@ MONEY_FIELDS.forEach(id => {
 // Restore saved / URL params (after MONEY_FIELDS is ready)
 restoreParams();
 
+let deathAge = window.innerWidth <= 900 ? 90 : 100;
+window.addEventListener("resize", () => {
+  const next = window.innerWidth <= 900 ? 90 : 100;
+  if (next !== deathAge) { deathAge = next; recalculate(); }
+});
+
 function getParams() {
   return {
     assets:      clamp(getNumericValue("p_assets"), 0, 1e10),
@@ -582,28 +587,15 @@ function getParams() {
     expenses:    clamp(getNumericValue("p_expenses"), 0, 1e10),
     nomReturn:   clamp(+document.getElementById("p_return").value, 1, 15) / 100,
     inflation:   clamp(+document.getElementById("p_inflation").value, 0, 10) / 100,
-    deathAge:    window.innerWidth <= 900 ? 90 : 100,
+    deathAge,
   };
-}
-
-function totalLiquid(p) {
-  return p.assets;
-}
-
-function loanPayments(year) {
-  let total = 0;
-  for (const ln of LOANS) {
-    if (year < ln.endYear) total += ln.monthly * 12;
-    else if (year === ln.endYear) total += ln.monthly * ln.endMonth;
-  }
-  return total;
 }
 
 function simulate(retireAge, p, customReturn, incomeOverride) {
   const nr = customReturn ?? p.nomReturn;
   const deathAge = p.deathAge;
   const startAge = currentAge();
-  let portfolio = totalLiquid(p);
+  let portfolio = p.assets;
   let minPort = portfolio;
   const ages = [], reals = [], nominals = [];
 
@@ -617,18 +609,17 @@ function simulate(retireAge, p, customReturn, incomeOverride) {
 
     if (age === deathAge) break;
 
-    if (portfolio > 0) portfolio *= (1 + nr);
+    if (portfolio > 0) portfolio *= (1 + nr); // 負債不計息（簡化模型）
     const exp = p.expenses * inf;
-    const loans = loanPayments(year);
 
     if (age < retireAge) {
       let inc = p.income;
       if (incomeOverride) {
         inc = age >= incomeOverride.startAge ? incomeOverride.amount : 0;
       }
-      portfolio += inc * inf - exp - loans;
+      portfolio += inc * inf - exp;
     } else {
-      portfolio -= (exp + loans);
+      portfolio -= exp;
     }
     minPort = Math.min(minPort, portfolio);
   }
@@ -657,7 +648,7 @@ const crosshairPlugin = {
     } else if (event.type === "mouseout") {
       chart._crosshair = null;
     }
-    chart.draw();
+    args.changed = true;
   },
   afterDatasetsDraw(chart) {
     if (!chart.ctx || !chart.chartArea) return;
@@ -681,6 +672,14 @@ Chart.register(crosshairPlugin);
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 //  Legend hover highlight helpers
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function hexAlpha(hex, a) {
+  const c = hex.replace("#", "");
+  const r = parseInt(c.substring(0, 2), 16);
+  const g = parseInt(c.substring(2, 4), 16);
+  const b = parseInt(c.substring(4, 6), 16);
+  return `rgba(${r},${g},${b},${a})`;
+}
+
 function legendHover(evt, legendItem, legend) {
   const ci = legendItem.datasetIndex;
   legend.chart.data.datasets.forEach((ds, i) => {
@@ -689,7 +688,7 @@ function legendHover(evt, legendItem, legend) {
     if (i === ci) {
       ds.borderWidth = 4;
     } else {
-      ds.borderColor = ds._origBorderColor + "30";
+      ds.borderColor = hexAlpha(ds._origBorderColor, 0.19);
       ds.borderWidth = 1;
     }
   });
@@ -720,7 +719,7 @@ const gridColor = "rgba(255,255,255,0.06)";
 function fadeBelow0(color) {
   return {
     segment: {
-      borderColor: ctx => (ctx.p0.parsed.y < 0 || ctx.p1.parsed.y < 0) ? color + "30" : undefined,
+      borderColor: ctx => (ctx.p0.parsed.y < 0 || ctx.p1.parsed.y < 0) ? hexAlpha(color, 0.19) : undefined,
       borderDash: ctx => (ctx.p0.parsed.y < 0 || ctx.p1.parsed.y < 0) ? [4, 4] : undefined,
     }
   };
@@ -753,15 +752,19 @@ const belowZeroPlugin = {
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillStyle = "rgba(239,68,68,0.25)";
-    ctx.fillText("吃土好吃唷", cx, cy);
+    ctx.fillText("吃土唷", cx, cy);
     ctx.restore();
   }
 };
 Chart.register(belowZeroPlugin);
 
+let c3YMaxWidth = 0;
 const defaultScales = () => ({
   x: { grid: { color: gridColor }, ticks: { color: "#9ca3af" } },
-  y: { grid: { color: gridColor }, ticks: { color: "#9ca3af", callback: function(v) {
+  y: { grid: { color: gridColor }, afterFit(axis) {
+    c3YMaxWidth = Math.max(c3YMaxWidth, axis.width);
+    axis.width = c3YMaxWidth;
+  }, ticks: { color: "#9ca3af", callback: function(v) {
     if (Math.abs(v) >= 10000) return (v / 10000).toLocaleString() + " 億";
     return v.toLocaleString() + " 萬";
   }}}
@@ -839,11 +842,6 @@ function c3IncAgeToX(chart) { return chart.scales.x.getPixelForValue(c3IncAge - 
 function c3IncAmountToY(chart) {
   const { top, bottom } = chart.chartArea;
   return bottom - (c3IncAmount / C3_INC_MAX) * (bottom - top);
-}
-function c3IncXToAge(chart, px) {
-  const idx = Math.round(chart.scales.x.getValueForPixel(px));
-  const maxAge = getParams().deathAge - 1;
-  return Math.max(currentAge(), Math.min(maxAge, idx + currentAge()));
 }
 function c3IncYToAmount(chart, py) {
   const { top, bottom } = chart.chartArea;
@@ -972,15 +970,7 @@ function c3UpdateData(chart, p, alsoUpdateOthers) {
   if (alsoUpdateOthers) {
     const earliest = findEarliest(p, undefined, inc);
 
-    const incNow = currentAge() >= c3IncAge ? inc.amount : 0;
-    const investable = incNow - p.expenses;
-    const fireRatio = p.expenses > 0 ? (totalLiquid(p) / p.expenses).toFixed(1) : "∞";
-    const incLabel = currentAge() >= c3IncAge ? "收入 − 支出" : `${c3IncAge}歲前無收入`;
-    document.getElementById("metrics").innerHTML = `
-      <div class="metric-card"><div class="label">現有資產</div><div class="value">NT$ ${(totalLiquid(p)/1e4).toFixed(0)} 萬</div><div class="sub">可投資的錢</div></div>
-      <div class="metric-card"><div class="label">每年可存下</div><div class="value ${investable >= 0 ? 'green' : 'red'}">NT$ ${(investable/1e4).toFixed(1)} 萬</div><div class="sub">${incLabel}</div></div>
-      <div class="metric-card"><div class="label">財務自由倍數 <span class="info-tip" data-tip="又稱 FIRE 倍數。當資產 = 年支出 × 25，每年提領 4% 即可覆蓋支出（4% 法則）">&#9432;</span></div><div class="value green">${fireRatio} 倍</div><div class="sub">到 25 倍就差不多了</div></div>
-    `;
+    renderMetrics(p, inc);
     updateConclusion(earliest);
   }
 }
@@ -1007,6 +997,10 @@ function c3BindEvents(canvas, chart) {
     }
     if (c3IncDragging || c3Dragging) {
       e.preventDefault();
+      chart.tooltip.setActiveElements([], { x: 0, y: 0 });
+      chart.setActiveElements([]);
+      chart._crosshair = null;
+      chart.update("none");
       const hint = document.getElementById("dragHint");
       if (hint && hint.style.opacity !== "0") {
         hint.style.opacity = "0";
@@ -1018,7 +1012,7 @@ function c3BindEvents(canvas, chart) {
     if (c3IncDragging || c3Dragging) e.preventDefault();
     const { x, y } = getXY(e);
     if (c3IncDragging) {
-      const newAge = c3IncXToAge(chart, x);
+      const newAge = c3XToAge(chart, x);
       const newAmt = c3IncYToAmount(chart, y);
       if (newAge !== c3IncAge || newAmt !== c3IncAmount) {
         c3IncAge = newAge; c3IncAmount = newAmt;
@@ -1060,6 +1054,7 @@ function c3BindEvents(canvas, chart) {
 
 function renderChart3(p, retAge) {
   if (charts.c3) { charts.c3.destroy(); delete charts.c3; }
+  c3YMaxWidth = 0;
   c3RetireAge = retAge; c3Dragging = false; c3Hovered = false;
   c3IncAge = currentAge(); c3IncAmount = Math.min(C3_INC_MAX, Math.round(p.income / 1e4));
   c3IncDragging = false; c3IncHovered = false;
@@ -1097,7 +1092,6 @@ function updateConclusion(earliest) {
   }
 }
 
-function fmt(n) { return (n / 1e4).toFixed(0) + " 萬"; }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 //  Render
@@ -1146,6 +1140,19 @@ function validateAll() {
   return valid;
 }
 
+function renderMetrics(p, inc) {
+  const age = currentAge();
+  const incNow = age >= c3IncAge ? inc.amount : 0;
+  const investable = incNow - p.expenses;
+  const fireRatio = p.expenses > 0 ? (p.assets / p.expenses).toFixed(1) : "∞";
+  const incLabel = age >= c3IncAge ? "收入 − 支出" : `${c3IncAge}歲前無收入`;
+  document.getElementById("metrics").innerHTML = `
+    <div class="metric-card"><div class="label">現有資產</div><div class="value">NT$ ${(p.assets/1e4).toFixed(0)} 萬</div><div class="sub">可投資的錢</div></div>
+    <div class="metric-card"><div class="label">每年可存下</div><div class="value ${investable >= 0 ? 'green' : 'red'}">NT$ ${(investable/1e4).toFixed(1)} 萬</div><div class="sub">${incLabel}</div></div>
+    <div class="metric-card"><div class="label">財務自由倍數 <span class="info-tip" data-tip="又稱 FIRE 倍數。當資產 = 年支出 × 25，每年提領 4% 即可覆蓋支出（4% 法則）">&#9432;</span></div><div class="value green">${fireRatio} 倍</div><div class="sub">到 25 倍就差不多了</div></div>
+  `;
+}
+
 let debounceTimer;
 function recalculate() {
   if (!validateAll()) return;
@@ -1157,19 +1164,7 @@ function recalculate() {
   c3IncAmount = Math.min(C3_INC_MAX, Math.round(p.income / 1e4));
   const inc = c3GetIncOverride();
   const earliest = findEarliest(p, undefined, inc);
-  const incNow = age >= c3IncAge ? inc.amount : 0;
-  const investable = incNow - p.expenses;
-  const fireRatio = p.expenses > 0 ? (totalLiquid(p) / p.expenses).toFixed(1) : "∞";
-  const incLabel = age >= c3IncAge ? "收入 − 支出" : `${c3IncAge}歲前無收入`;
-
-  // ── Metrics ──
-  document.getElementById("metrics").innerHTML = `
-    <div class="metric-card"><div class="label">現有資產</div><div class="value">NT$ ${(totalLiquid(p)/1e4).toFixed(0)} 萬</div><div class="sub">可投資的錢</div></div>
-    <div class="metric-card"><div class="label">每年可存下</div><div class="value ${investable >= 0 ? 'green' : 'red'}">NT$ ${(investable/1e4).toFixed(1)} 萬</div><div class="sub">${incLabel}</div></div>
-    <div class="metric-card"><div class="label">財務自由倍數 <span class="info-tip" data-tip="又稱 FIRE 倍數。當資產 = 年支出 × 25，每年提領 4% 即可覆蓋支出（4% 法則）">&#9432;</span></div><div class="value green">${fireRatio} 倍</div><div class="sub">到 25 倍就差不多了</div></div>
-  `;
-
-  // ── Conclusion ──
+  renderMetrics(p, inc);
   updateConclusion(earliest);
 
   // ── Chart 3: Sensitivity (draggable retire line + income bar) ──
