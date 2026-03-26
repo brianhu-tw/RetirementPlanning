@@ -120,7 +120,7 @@
   }
   .chart-box canvas { width: 100% !important; }
   .chart-wrap { position: relative; width: 100%; }
-  .chart-wrap.full { height: 500px; }
+  .chart-wrap.full { height: 500px; touch-action: none; }
   .chart-wrap.half { height: 420px; }
 
   .two-col { grid-template-columns: 1fr 1fr; }
@@ -814,7 +814,10 @@ function c3XToAge(chart, px) {
   const maxAge = getParams().deathAge - 1;
   return Math.max(currentAge(), Math.min(maxAge, idx + currentAge()));
 }
-function c3IsNear(chart, px) { return Math.abs(px - c3AgeToX(chart)) < 16; }
+const C3_HIT = "ontouchstart" in window ? 28 : 16;
+const C3_INC_HIT_X = "ontouchstart" in window ? 40 : 28;
+const C3_INC_HIT_Y = "ontouchstart" in window ? 30 : 18;
+function c3IsNear(chart, px) { return Math.abs(px - c3AgeToX(chart)) < C3_HIT; }
 
 // Income helpers
 function c3IncAgeToX(chart) { return chart.scales.x.getPixelForValue(c3IncAge - currentAge()); }
@@ -833,7 +836,7 @@ function c3IncYToAmount(chart, py) {
   return Math.max(0, Math.min(C3_INC_MAX, Math.round(raw / 5) * 5));
 }
 function c3IncIsNear(chart, px, py) {
-  return Math.abs(px - c3IncAgeToX(chart)) < 28 && Math.abs(py - c3IncAmountToY(chart)) < 18;
+  return Math.abs(px - c3IncAgeToX(chart)) < C3_INC_HIT_X && Math.abs(py - c3IncAmountToY(chart)) < C3_INC_HIT_Y;
 }
 function c3GetIncOverride() {
   return { startAge: c3IncAge, amount: c3IncAmount * 1e4 };
@@ -965,6 +968,9 @@ function c3BindEvents(canvas, chart) {
       canvas.style.cursor = "grabbing"; chart.draw();
     }
     if (c3IncDragging || c3Dragging) {
+      e.preventDefault();
+      chart.options.plugins.tooltip.enabled = false;
+      chart.update("none");
       const hint = document.getElementById("dragHint");
       if (hint && hint.style.opacity !== "0") {
         hint.style.opacity = "0";
@@ -973,6 +979,7 @@ function c3BindEvents(canvas, chart) {
     }
   }, opt);
   canvas.addEventListener("pointermove", e => {
+    if (c3IncDragging || c3Dragging) e.preventDefault();
     const { x, y } = getXY(e);
     if (c3IncDragging) {
       const newAge = c3IncXToAge(chart, x);
@@ -999,12 +1006,17 @@ function c3BindEvents(canvas, chart) {
   }, opt);
   canvas.addEventListener("pointerup", e => {
     const { x, y } = getXY(e);
+    const wasDragging = c3IncDragging || c3Dragging;
     if (c3IncDragging) {
       c3IncDragging = false; canvas.releasePointerCapture(e.pointerId);
       canvas.style.cursor = c3IncIsNear(chart, x, y) ? "move" : ""; chart.draw();
     } else if (c3Dragging) {
       c3Dragging = false; canvas.releasePointerCapture(e.pointerId);
       canvas.style.cursor = c3IsNear(chart, x) ? "grab" : ""; chart.draw();
+    }
+    if (wasDragging) {
+      chart.options.plugins.tooltip.enabled = true;
+      chart.update("none");
     }
   }, opt);
   canvas.addEventListener("pointerleave", () => {
