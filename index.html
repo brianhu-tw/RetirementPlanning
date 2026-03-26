@@ -4,6 +4,20 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>幾歲能退休？</title>
+
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="幾歲能退休？">
+<meta property="og:description" content="填幾個數字，算算你的退休時間表。看看不同報酬率下，你的錢夠不夠花。">
+<meta property="og:locale" content="zh_TW">
+
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="幾歲能退休？">
+<meta name="twitter:description" content="填幾個數字，算算你的退休時間表。看看不同報酬率下，你的錢夠不夠花。">
+
+<meta name="description" content="填幾個數字，算算你的退休時間表。看看不同報酬率下，你的錢夠不夠花。">
+
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <style>
   :root {
@@ -148,6 +162,17 @@
   .param-group input.invalid { border-color: var(--red); background: rgba(239,68,68,0.06); }
   .param-group .error-msg { font-size: 0.72rem; color: var(--red); margin-top: 0.25rem; min-height: 1rem; }
 
+  .advanced { margin-top: 1rem; }
+  .advanced summary {
+    cursor: pointer;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    list-style: none;
+  }
+  .advanced summary::before { content: "▸ "; }
+  .advanced[open] summary::before { content: "▾ "; }
+  .advanced summary::-webkit-details-marker { display: none; }
+
   .btn {
     display: inline-block;
     background: var(--accent);
@@ -162,7 +187,6 @@
     transition: opacity 0.2s;
   }
   .btn:hover { opacity: 0.85; }
-
 
   /* ── Advice cards ── */
   .advice-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; }
@@ -296,17 +320,22 @@
         <input type="text" inputmode="numeric" id="p_expenses" value="320,000">
         <div class="error-msg" id="err_expenses"></div>
       </div>
-      <div class="param-group">
-        <label>年報酬率 (%)<span class="info-tip" data-tip="投資組合的年化報酬率。台股大盤長期約 8-10%，全球股市約 7-9%">&#9432;</span></label>
-        <input type="number" id="p_return" value="7" step="0.5" min="1" max="15">
-        <div class="error-msg" id="err_return"></div>
-      </div>
-      <div class="param-group">
-        <label>通膨率 (%)<span class="info-tip" data-tip="物價每年上漲的幅度。台灣近年約 2-3%">&#9432;</span></label>
-        <input type="number" id="p_inflation" value="3" step="0.5" min="0" max="10">
-        <div class="error-msg" id="err_inflation"></div>
-      </div>
     </div>
+    <details class="advanced">
+      <summary>進階設定</summary>
+      <div class="param-grid" style="margin-top:1rem;">
+        <div class="param-group">
+          <label>年報酬率 (%)<span class="info-tip" data-tip="投資組合的年化報酬率。台股大盤長期約 8-10%，全球股市約 7-9%">&#9432;</span></label>
+          <input type="number" id="p_return" value="7" step="0.5" min="1" max="15">
+          <div class="error-msg" id="err_return"></div>
+        </div>
+        <div class="param-group">
+          <label>通膨率 (%)<span class="info-tip" data-tip="物價每年上漲的幅度。台灣近年約 2-3%">&#9432;</span></label>
+          <input type="number" id="p_inflation" value="3" step="0.5" min="0" max="10">
+          <div class="error-msg" id="err_inflation"></div>
+        </div>
+      </div>
+    </details>
   </div>
 </section>
 
@@ -387,6 +416,9 @@ function getNumericValue(id) {
   return +stripCommas(document.getElementById(id).value);
 }
 
+// ── Field lists ──
+const MONEY_FIELDS = ["p_assets", "p_income", "p_expenses"];
+
 // ── localStorage persistence ──
 const ALL_FIELDS = ["p_age", "p_assets", "p_income", "p_expenses", "p_return", "p_inflation"];
 const LS_KEY = "fire_params";
@@ -403,10 +435,8 @@ function restoreParams() {
     ALL_FIELDS.forEach(id => { if (data[id] != null) document.getElementById(id).value = data[id]; });
   } catch(e) {}
 }
-restoreParams();
 
 // Auto-format money fields on input
-const MONEY_FIELDS = ["p_assets", "p_income", "p_expenses"];
 MONEY_FIELDS.forEach(id => {
   const el = document.getElementById(id);
   el.addEventListener("input", () => {
@@ -419,6 +449,9 @@ MONEY_FIELDS.forEach(id => {
     el.setSelectionRange(pos + afterLen - beforeLen, pos + afterLen - beforeLen);
   });
 });
+
+// Restore saved / URL params (after MONEY_FIELDS is ready)
+restoreParams();
 
 function getParams() {
   return {
@@ -628,6 +661,7 @@ function withInteraction(opts) {
         borderColor: "rgba(255,255,255,0.1)", borderWidth: 1, padding: 12, cornerRadius: 8,
         bodySpacing: 6, usePointStyle: true,
         callbacks: {
+          title: items => items.length ? items[0].label + " 歲" : "",
           label: ctx => {
             const v = ctx.parsed.y;
             const sign = v >= 0 ? "" : "-";
