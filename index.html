@@ -475,6 +475,13 @@
           <div class="error-msg" id="err_inflation"></div>
         </div>
       </div>
+      <div class="param-grid" style="margin-top:1rem;">
+        <div class="param-group">
+          <label>薪資年成長率 (%)<span class="info-tip" data-tip="每年薪資成長幅度，0% 代表薪水固定不變。不含通膨，純粹是加薪幅度">&#9432;</span></label>
+          <input type="number" id="p_incGrowRate" value="0" step="0.5" min="0" max="10">
+          <div class="error-msg" id="err_incGrowRate"></div>
+        </div>
+      </div>
     </details>
   </div>
 </section>
@@ -528,8 +535,8 @@
       <p>圖表上的金額已扣除通膨影響。例如 30 年後帳面上的 1,000 萬，以今天的購買力來看可能只值 400 多萬。圖表顯示的就是那個 400 多萬——你實際感受到的價值。逐年試算表格則同時列出名目與實質金額，方便對照。</p>
     </div>
     <div class="note-item">
-      <h4>收入與支出都會隨通膨成長</h4>
-      <p>模擬中假設你的收入會跟著物價調整（例如加薪），支出也是，所以退休前每年實際能存下的金額大致不變。這不是重複扣通膨——模擬全程用名目金額計算，最後才除以通膨係數轉成實質購買力。報酬率 7%、通膨 3% 的話，實質報酬大約是 4%。</p>
+      <h4>支出隨通膨成長，收入看成長率</h4>
+      <p>支出每年依通膨率等比例增加。收入的成長由「薪資年成長率」決定——預設 0% 代表薪水固定不變，設 2% 代表每年加薪 2%（不含通膨）。通膨高、加薪慢的話，購買力會逐年下降。</p>
     </div>
     <div class="note-item">
       <h4>退休後沒收入，資產會加速縮水</h4>
@@ -552,7 +559,7 @@
       <p style="line-height:1.9;">
         ① 起始資產 = 現有資產<br>
         ② 每年：資產 × (1 + 報酬率)<br>
-        ③ 工作中：+ 年收入 × 通膨係數<br>
+        ③ 工作中：+ 年收入 × (1 + 薪資成長率)<sup>年數</sup><br>
         ④ 每年：− 年支出 × 通膨係數<br>
         ⑤ 通膨係數 = (1 + 通膨率)<sup>年數</sup><br>
         ⑥ 實質購買力 = 名目資產 ÷ 通膨係數
@@ -601,8 +608,8 @@ function getNumericValue(id) {
 const MONEY_FIELDS = ["p_assets", "p_income", "p_expenses"];
 
 // ── localStorage + URL persistence ──
-const ALL_FIELDS = ["p_age", "p_assets", "p_income", "p_expenses", "p_return", "p_inflation"];
-const URL_KEYS = { p_age: "age", p_assets: "assets", p_income: "income", p_expenses: "expenses", p_return: "return", p_inflation: "inflation" };
+const ALL_FIELDS = ["p_age", "p_assets", "p_income", "p_expenses", "p_return", "p_inflation", "p_incGrowRate"];
+const URL_KEYS = { p_age: "age", p_assets: "assets", p_income: "income", p_expenses: "expenses", p_return: "return", p_inflation: "inflation", p_incGrowRate: "incGrowRate" };
 const LS_KEY = "fire_params";
 function saveParams() {
   const data = {};
@@ -674,7 +681,7 @@ MONEY_FIELDS.forEach(id => {
 
 // Restore saved / URL params (after MONEY_FIELDS is ready)
 restoreParams();
-if (+document.getElementById("p_return").value !== 7 || +document.getElementById("p_inflation").value !== 3) {
+if (+document.getElementById("p_return").value !== 7 || +document.getElementById("p_inflation").value !== 3 || +document.getElementById("p_incGrowRate").value !== 0) {
   document.querySelector("details.advanced").open = true;
 }
 
@@ -687,6 +694,7 @@ function getParams() {
     expenses:    clamp(getNumericValue("p_expenses"), 0, 1e10),
     nomReturn:   clamp(+document.getElementById("p_return").value, 1, 15) / 100,
     inflation:   clamp(+document.getElementById("p_inflation").value, 0, 10) / 100,
+    incGrowRate: clamp(+document.getElementById("p_incGrowRate").value, 0, 10) / 100,
     deathAge,
   };
 }
@@ -717,12 +725,15 @@ function simulate(retireAge, p, customReturn, incomeOverride) {
 
     if (age < retireAge) {
       let inc = p.income;
-      if (incomeOverride) {
-        inc = age >= incomeOverride.startAge ? incomeOverride.amount : 0;
+      let incGrowthYears = age - startAge;
+      if (incomeOverride && age >= incomeOverride.startAge) {
+        inc = incomeOverride.amount;
+        incGrowthYears = age - incomeOverride.startAge;
       }
-      yearIncomes.push(inc * inf);
+      const incAdj = inc * Math.pow(1 + p.incGrowRate, incGrowthYears);
+      yearIncomes.push(incAdj);
       yearExpenses.push(exp);
-      portfolio += inc * inf - exp;
+      portfolio += incAdj - exp;
     } else {
       yearIncomes.push(0);
       yearExpenses.push(exp);
@@ -928,6 +939,8 @@ let c3Hovered = false;
 // Income bar state
 let c3IncAge = currentAge();
 let c3IncAmount = 200; // 萬
+let c3IncOrigAge = c3IncAge;
+let c3IncOrigAmount = c3IncAmount;
 let c3IncDragging = false;
 let c3IncHovered = false;
 let C3_INC_MAX = 500; // 萬, dynamically adjusted
@@ -958,7 +971,11 @@ function c3IncYToAmount(chart, py) {
 function c3IncIsNear(chart, px, py) {
   return Math.abs(px - c3IncAgeToX(chart)) < C3_INC_HIT_X && Math.abs(py - c3IncAmountToY(chart)) < C3_INC_HIT_Y;
 }
+function c3IncHasMoved() {
+  return c3IncAge !== c3IncOrigAge || c3IncAmount !== c3IncOrigAmount;
+}
 function c3GetIncOverride() {
+  if (!c3IncHasMoved()) return undefined;
   return { startAge: c3IncAge, amount: c3IncAmount * 1e4 };
 }
 // Draw plugin — retirement line + income bar
@@ -996,6 +1013,30 @@ const dragLinePlugin = {
     }
 
     const mob = window.innerWidth <= 900;
+
+    // ── Ghost line at original income position ──
+    if (c3IncHasMoved()) {
+      const origX = chart.scales.x.getPixelForValue(c3IncOrigAge - currentAge());
+      const origY = bottom - (c3IncOrigAmount / C3_INC_MAX) * (bottom - top);
+      ctx.save();
+      ctx.setLineDash([3, 6]);
+      ctx.strokeStyle = "rgba(34,197,94,0.25)";
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(origX, top); ctx.lineTo(origX, bottom); ctx.stroke();
+      ctx.setLineDash([]);
+      // Diamond marker at original position
+      ctx.fillStyle = "rgba(34,197,94,0.35)";
+      ctx.beginPath();
+      ctx.moveTo(origX, origY - 6); ctx.lineTo(origX + 6, origY);
+      ctx.lineTo(origX, origY + 6); ctx.lineTo(origX - 6, origY);
+      ctx.closePath(); ctx.fill();
+      // Label
+      ctx.font = "10px -apple-system, sans-serif";
+      ctx.fillStyle = "rgba(34,197,94,0.5)";
+      ctx.textAlign = "center";
+      ctx.fillText(`原始 ${c3IncOrigAmount}萬`, origX, origY - 12);
+      ctx.restore();
+    }
 
     // ── Income bar (green) ──
     const incX = c3IncAgeToX(chart);
@@ -1057,15 +1098,22 @@ const dragLinePlugin = {
 
 function updateC3Summary(p) {
   const age = currentAge();
-  const workYears = c3RetireAge - Math.max(age, c3IncAge);
   const el = document.getElementById("c3Summary");
-  el.innerHTML = `假設 <b>${c3IncAge} 歲</b>開始工作、年收 <b>${c3IncAmount} 萬</b>，`
+  const growthNote = p.incGrowRate > 0 ? `（年成長 ${(p.incGrowRate*100).toFixed(0)}%）` : '';
+  let incPart;
+  if (c3IncHasMoved()) {
+    incPart = `年收 <b>${c3IncOrigAmount} 萬</b>${growthNote}、<b>${c3IncAge} 歲</b>起改為 <b>${c3IncAmount} 萬</b>`;
+  } else {
+    incPart = `年收 <b>${c3IncOrigAmount} 萬</b>${growthNote}`;
+  }
+  const workYears = c3RetireAge - age;
+  el.innerHTML = `假設${incPart}，`
     + `<b>${c3RetireAge} 歲</b>退休（工作 ${Math.max(0, workYears)} 年），`
     + `年支出 <b>${(p.expenses/1e4).toFixed(0)} 萬</b>，`
     + `把存下的錢投入大盤，來看看夠不夠花`;
 }
 
-function c3UpdateData(chart, p, alsoUpdateOthers) {
+function c3UpdateData(chart, p) {
   const inc = c3GetIncOverride();
   updateC3Summary(p);
   c3Returns(p).forEach((nr, i) => {
@@ -1073,14 +1121,6 @@ function c3UpdateData(chart, p, alsoUpdateOthers) {
     chart.data.datasets[i].data = r.reals.map(v => v / 1e4);
   });
   chart.update("none");
-  // When income bar moves, refresh metrics + conclusion
-  if (alsoUpdateOthers) {
-    const earliest = findEarliest(p, undefined, inc);
-
-    renderMetrics(p, inc);
-    updateConclusion(earliest);
-    renderYearlyTable(p, c3RetireAge, inc);
-  }
 }
 
 let c3EventAbort = null;
@@ -1124,13 +1164,12 @@ function c3BindEvents(canvas, chart) {
       const newAmt = c3IncYToAmount(chart, y);
       if (newAge !== c3IncAge || newAmt !== c3IncAmount) {
         c3IncAge = newAge; c3IncAmount = newAmt;
-        document.getElementById("p_income").value = addCommas(c3IncAmount * 1e4);
-        c3UpdateData(chart, getParams(), true);
+        c3UpdateData(chart, getParams());
       }
       chart.draw();
     } else if (c3Dragging) {
       const newAge = c3XToAge(chart, x);
-      if (newAge !== c3RetireAge) { c3RetireAge = newAge; c3UpdateData(chart, getParams(), true); }
+      if (newAge !== c3RetireAge) { c3RetireAge = newAge; c3UpdateData(chart, getParams()); }
       chart.draw();
     } else {
       const nearInc = c3IncIsNear(chart, x, y);
@@ -1146,6 +1185,11 @@ function c3BindEvents(canvas, chart) {
     const { x, y } = getXY(e);
     if (c3IncDragging) {
       c3IncDragging = false; canvas.releasePointerCapture(e.pointerId);
+      // Snap back to original if released at the same age
+      if (c3IncAge === c3IncOrigAge) {
+        c3IncAge = c3IncOrigAge; c3IncAmount = c3IncOrigAmount;
+        c3UpdateData(chart, getParams());
+      }
       canvas.style.cursor = c3IncIsNear(chart, x, y) ? "move" : ""; chart.draw();
     } else if (c3Dragging) {
       c3Dragging = false; canvas.releasePointerCapture(e.pointerId);
@@ -1165,14 +1209,14 @@ function renderChart3(p, retAge) {
   c3YMaxWidth = 0;
   c3RetireAge = retAge; c3Dragging = false; c3Hovered = false;
   c3IncAge = currentAge(); c3IncAmount = Math.round(p.income / 1e4);
+  c3IncOrigAge = c3IncAge; c3IncOrigAmount = c3IncAmount;
   c3IncDragging = false; c3IncHovered = false;
 
-  const inc = c3GetIncOverride();
   updateC3Summary(p);
-  const base = simulate(retAge, p, undefined, inc);
+  const base = simulate(retAge, p);
   const C3_LABELS = ["悲觀", "基準", "樂觀"];
   const datasets = c3Returns(p).map((nr, i) => {
-    const r = simulate(retAge, p, nr, inc);
+    const r = simulate(retAge, p, nr);
     return {
       label: `${C3_LABELS[i]} ${(nr*100).toFixed(0)}%`,
       data: r.reals.map(v => v / 1e4),
@@ -1214,7 +1258,8 @@ const VALIDATIONS = {
   p_income:    { min: 0,  max: 1e10, integer: false, errId: "err_income",    emptyMsg: "請輸入年收入",   rangeMsg: "收入不能為負數" },
   p_expenses:  { min: 0,  max: 1e10, integer: false, errId: "err_expenses",  emptyMsg: "請輸入年支出",   rangeMsg: "支出不能為負數" },
   p_return:    { min: 1,  max: 15,   integer: false, errId: "err_return",    emptyMsg: "請輸入報酬率",   rangeMsg: "報酬率需介於 1%–15%" },
-  p_inflation: { min: 0,  max: 10,   integer: false, errId: "err_inflation", emptyMsg: "請輸入通膨率",   rangeMsg: "通膨率需介於 0%–10%" },
+  p_inflation:   { min: 0,  max: 10,   integer: false, errId: "err_inflation",   emptyMsg: "請輸入通膨率",       rangeMsg: "通膨率需介於 0%–10%" },
+  p_incGrowRate: { min: 0,  max: 10,   integer: false, errId: "err_incGrowRate", emptyMsg: "請輸入成長率",       rangeMsg: "成長率需介於 0%–10%" },
 };
 
 function validateAll() {
@@ -1248,21 +1293,18 @@ function validateAll() {
   return valid;
 }
 
-function renderMetrics(p, inc) {
-  const age = currentAge();
-  const incNow = age >= c3IncAge ? inc.amount : 0;
-  const investable = incNow - p.expenses;
+function renderMetrics(p) {
+  const investable = p.income - p.expenses;
   const fireRatio = p.expenses > 0 ? (p.assets / p.expenses).toFixed(1) : "∞";
-  const incLabel = age >= c3IncAge ? "收入 − 支出" : `${c3IncAge}歲前無收入`;
   document.getElementById("metrics").innerHTML = `
     <div class="metric-card"><div class="label">現有資產</div><div class="value">NT$ ${(p.assets/1e4).toFixed(0)} 萬</div><div class="sub">可投資的錢</div></div>
-    <div class="metric-card"><div class="label">每年可存下</div><div class="value ${investable >= 0 ? 'green' : 'red'}">NT$ ${(investable/1e4).toFixed(1)} 萬</div><div class="sub">${incLabel}</div></div>
+    <div class="metric-card"><div class="label">每年可存下</div><div class="value ${investable >= 0 ? 'green' : 'red'}">NT$ ${(investable/1e4).toFixed(1)} 萬</div><div class="sub">收入 − 支出</div></div>
     <div class="metric-card"><div class="label">財務自由倍數 <span class="info-tip" data-tip="又稱 FIRE 倍數。當資產 = 年支出 × 25，每年提領 4% 即可覆蓋支出（4% 法則）">&#9432;</span></div><div class="value green">${fireRatio} 倍</div><div class="sub">到 25 倍就差不多了</div></div>
   `;
 }
 
-function renderYearlyTable(p, retireAge, inc) {
-  const r = simulate(retireAge, p, undefined, inc);
+function renderYearlyTable(p, retireAge) {
+  const r = simulate(retireAge, p);
   const tbody = document.getElementById("yearlyTbody");
   const startAge = currentAge();
   let rows = "";
@@ -1303,15 +1345,14 @@ function recalculate() {
   const incWan = Math.round(p.income / 1e4);
   C3_INC_MAX = Math.max(500, Math.round(incWan * 1.5 / 50) * 50);
   c3IncAmount = incWan;
-  const inc = c3GetIncOverride();
-  const earliest = findEarliest(p, undefined, inc);
-  renderMetrics(p, inc);
+  const earliest = findEarliest(p);
+  renderMetrics(p);
   updateConclusion(earliest);
 
   // ── Chart 3: Sensitivity (draggable retire line + income bar) ──
   const retAge = earliest !== null ? earliest : Math.min(65, p.deathAge - 1);
   renderChart3(p, retAge);
-  renderYearlyTable(p, retAge, inc);
+  renderYearlyTable(p, retAge);
 }
 
 // Auto-update on any parameter change
