@@ -453,7 +453,7 @@
       <summary>進階設定</summary>
       <div class="param-grid" style="margin-top:1rem;">
         <div class="param-group">
-          <label>投資標的</label>
+          <label>投資標的<span class="info-tip" data-tip="選擇後會自動帶入該標的成立以來的年化報酬率（含息再投入）。歷史報酬不代表未來績效">&#9432;</span></label>
           <select id="p_etf">
             <option value="">自訂</option>
             <option value="12.5">0050 台灣50（12.5%）</option>
@@ -462,10 +462,9 @@
             <option value="9">VTI 美國全市場（9%）</option>
             <option value="8.5">VT 全球全市場（8.5%）</option>
           </select>
-          <div class="sub" style="margin-top:0.3rem;font-size:0.75rem;color:var(--text-muted);">報酬率為各 ETF 成立以來年化報酬（含息），僅供參考</div>
         </div>
         <div class="param-group">
-          <label>年報酬率 (%)<span class="info-tip" data-tip="投資組合的年化報酬率。台股大盤長期約 8-10%，全球股市約 7-9%">&#9432;</span></label>
+          <label>年報酬率 (%)<span class="info-tip" data-tip="你預期投資組合每年平均能賺多少。數字越高假設越樂觀，沒把握的話建議保守一點，結果會更可靠">&#9432;</span></label>
           <input type="number" id="p_return" value="7" step="0.5" min="1" max="15">
           <div class="error-msg" id="err_return"></div>
         </div>
@@ -956,6 +955,12 @@ const C3_HIT = "ontouchstart" in window ? 28 : 16;
 const C3_INC_HIT_X = "ontouchstart" in window ? 40 : 28;
 const C3_INC_HIT_Y = "ontouchstart" in window ? 30 : 18;
 function c3IsNear(chart, px) { return Math.abs(px - c3AgeToX(chart)) < C3_HIT; }
+function c3RetHandleIsNear(chart, px, py) {
+  if (Math.abs(px - c3AgeToX(chart)) >= C3_HIT) return false;
+  const mob = window.innerWidth <= 900;
+  const handleY = chart.chartArea.top + (mob ? 20 : 28);
+  return Math.abs(py - handleY) < (mob ? 30 : 24);
+}
 
 // Income helpers
 function c3IncAgeToX(chart) { return chart.scales.x.getPixelForValue(c3IncAge - currentAge()); }
@@ -984,7 +989,12 @@ const dragLinePlugin = {
   beforeEvent(chart, args) {
     if (c3Dragging || c3IncDragging) return false;
     const evt = args.event;
-    if (evt.x != null && evt.y != null && (c3IsNear(chart, evt.x) || c3IncIsNear(chart, evt.x, evt.y))) return false;
+    if (evt.x != null && evt.y != null && (c3RetHandleIsNear(chart, evt.x, evt.y) || c3IncIsNear(chart, evt.x, evt.y))) {
+      chart.tooltip.setActiveElements([], { x: 0, y: 0 });
+      chart.setActiveElements([]);
+      args.changed = true;
+      return false;
+    }
   },
   afterDatasetsDraw(chart) {
     if (!chart.ctx || !chart.chartArea) return;
@@ -1384,6 +1394,7 @@ document.addEventListener("click", e => {
   if (!tip) { removeBubble(); return; }
   if (activeBubble && activeBubble._owner === tip) { removeBubble(); return; }
   removeBubble();
+  if (window.matchMedia("(hover: hover)").matches) return;
   const rect = tip.getBoundingClientRect();
   const bubble = document.createElement("div");
   bubble.className = "tip-bubble";
