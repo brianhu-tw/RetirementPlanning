@@ -3,27 +3,61 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>幾歲能退休？</title>
+<title>幾歲能退休？退休金計算模擬器 | FIRE 財務自由規劃</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏖️</text></svg>">
 
 <link rel="canonical" href="https://brianhu-tw.github.io/fire/">
 <meta name="google-site-verification" content="_TY7nU0EHqHHyqxmrU9QERsMp4Rn7Bsm6kWxx0xE7aM" />
-<meta name="description" content="填幾個數字，算算你的退休時間表。看看不同報酬率下，你的錢夠不夠花。">
+<meta name="description" content="免費線上退休金計算器，輸入年收入、支出與投資報酬率，算出你最快幾歲能達到財務自由。支援 ETF 預設報酬率、通膨調整、逐年試算與情境分析。">
 <meta name="keywords" content="退休規劃,退休金計算,FIRE,財務自由,退休模擬器,退休年齡,ETF,被動收入">
 
 <!-- Open Graph -->
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://brianhu-tw.github.io/fire/">
-<meta property="og:title" content="幾歲能退休？">
+<meta property="og:title" content="幾歲能退休？退休金計算模擬器">
 <meta property="og:description" content="填幾個數字，算算你的退休時間表。看看不同報酬率下，你的錢夠不夠花。">
 <meta property="og:locale" content="zh_TW">
+<meta property="og:image" content="https://brianhu-tw.github.io/fire/og-image.svg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
 
 <!-- Twitter Card -->
-<meta name="twitter:card" content="summary">
-<meta name="twitter:title" content="幾歲能退休？">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://brianhu-tw.github.io/fire/og-image.svg">
+<meta name="twitter:title" content="幾歲能退休？退休金計算模擬器">
 <meta name="twitter:description" content="填幾個數字，算算你的退休時間表。看看不同報酬率下，你的錢夠不夠花。">
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" integrity="sha384-vsrfeLOOY6KuIYKDlmVH5UiBmgIdB1oEf7p01YgWHuqmOHfZr374+odEv96n9tNC" crossorigin="anonymous"></script>
+<meta name="theme-color" content="#0f1117">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "幾歲能退休？退休金計算模擬器",
+  "url": "https://brianhu-tw.github.io/fire/",
+  "applicationCategory": "FinanceApplication",
+  "operatingSystem": "All",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "TWD" },
+  "inLanguage": "zh-TW",
+  "description": "免費線上退休金計算器，輸入年收入、支出與投資報酬率，算出你最快幾歲能達到財務自由。"
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    { "@type": "Question", "name": "什麼是 FIRE 與 25 倍法則？", "acceptedAnswer": { "@type": "Answer", "text": "FIRE（Financial Independence, Retire Early）社群常用的經驗法則：當你的資產達到年支出的 25 倍，每年提領 4% 就能覆蓋生活費，理論上資產不會耗盡。" }},
+    { "@type": "Question", "name": "退休後資產為什麼會加速縮水？", "acceptedAnswer": { "@type": "Answer", "text": "退休後只出不進，加上通膨持續侵蝕，資產會以更快的速度減少。" }},
+    { "@type": "Question", "name": "圖表上的金額是什麼意思？", "acceptedAnswer": { "@type": "Answer", "text": "圖表顯示的是扣除通膨影響後的「實質」購買力。例如 30 年後帳面上的 1,000 萬，以今天的購買力來看可能只值 400 多萬，圖表顯示的就是那個 400 多萬。" }},
+    { "@type": "Question", "name": "悲觀、基準、樂觀三條線是什麼？", "acceptedAnswer": { "@type": "Answer", "text": "三條線分別是你設定的報酬率 ±2%。例如設 7%，就會看到 5%、7%、9% 三種情境，幫你感受報酬率波動的影響。" }},
+    { "@type": "Question", "name": "這個計算有包含勞保勞退嗎？", "acceptedAnswer": { "@type": "Answer", "text": "沒有。這裡只計算你自己的投資資產。勞保老年給付、勞退新制、儲蓄險等未納入，所以實際退休條件可能比這裡算的更寬裕。" }}
+  ]
+}
+</script>
+
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" integrity="sha384-vsrfeLOOY6KuIYKDlmVH5UiBmgIdB1oEf7p01YgWHuqmOHfZr374+odEv96n9tNC" crossorigin="anonymous"></script>
 <style>
   :root {
     --bg: #0f1117;
@@ -85,7 +119,7 @@
   .metric-card .value.accent { color: var(--accent); }
   .metric-card .value.amber { color: var(--accent2); }
   .metric-card .value.pink { color: var(--pink); }
-  .metric-card .value.red { color: #e74c3c; }
+  .metric-card .value.red { color: var(--red); }
 
   /* ── Sections ── */
   section { margin-bottom: 3rem; }
@@ -194,21 +228,6 @@
   .advanced[open] summary::before { content: "▾ "; }
   .advanced summary::-webkit-details-marker { display: none; }
 
-  .btn {
-    display: inline-block;
-    background: var(--accent);
-    color: white;
-    border: none;
-    padding: 0.6rem 1.5rem;
-    border-radius: 8px;
-    font-size: 0.9rem;
-    font-weight: 600;
-    cursor: pointer;
-    margin-top: 1rem;
-    transition: opacity 0.2s;
-  }
-  .btn:hover { opacity: 0.85; }
-
   .share-wrap {
     text-align: center;
     margin-bottom: 2rem;
@@ -253,21 +272,6 @@
     opacity: 1;
     transform: translateX(-50%) translateY(0);
   }
-
-  /* ── Advice cards ── */
-  .advice-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; }
-  .advice-card {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 1.25rem;
-    border-left: 3px solid var(--accent);
-  }
-  .advice-card h4 { font-size: 0.95rem; font-weight: 600; margin-bottom: 0.4rem; }
-  .advice-card p { font-size: 0.85rem; color: var(--text-muted); }
-  .advice-card.warn { border-left-color: var(--accent2); }
-  .advice-card.danger { border-left-color: var(--red); }
-  .advice-card.good { border-left-color: var(--green); }
 
   /* ── Conclusion ── */
   .conclusion {
@@ -360,6 +364,23 @@
   .yearly-table-wrap summary::before { content: "▸ "; color: var(--text-muted); }
   .yearly-table-wrap details[open] summary::before { content: "▾ "; }
   .yearly-table-wrap summary::-webkit-details-marker { display: none; }
+  .yearly-table-scroll-wrap {
+    position: relative;
+  }
+  .yearly-table-scroll-wrap::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 24px;
+    height: 100%;
+    pointer-events: none;
+    background: linear-gradient(to left, var(--card), transparent);
+    z-index: 1;
+  }
+  @media (min-width: 901px) {
+    .yearly-table-scroll-wrap::after { display: none; }
+  }
   .yearly-table-scroll {
     overflow-x: auto;
     padding: 0 1.25rem 1.25rem;
@@ -397,7 +418,7 @@
   .notes { margin-bottom: 2rem; }
   .notes-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
     gap: 1rem;
   }
   .note-item {
@@ -420,11 +441,12 @@
 </head>
 <body>
 
+<noscript><div style="text-align:center;padding:3rem 1rem;color:#e4e4e7;font-size:1.1rem;">此工具需要 JavaScript 才能運作，請在瀏覽器設定中啟用。</div></noscript>
 <div class="container">
 
 <header>
   <h1>幾歲能退休？</h1>
-  <p>假設每年存下的錢都投入大盤，來算算你的退休時間表</p>
+  <p>是還要工作多久？假設每年存下的錢都投入大盤，來看看什麼時候能財務自由</p>
 </header>
 
 <!-- ── Parameter Panel ── -->
@@ -433,22 +455,22 @@
   <div class="params">
     <div class="param-grid">
       <div class="param-group">
-        <label>目前年齡 (歲)</label>
+        <label for="p_age">目前年齡 (歲)</label>
         <input type="number" id="p_age" value="22" step="1" min="0" max="80">
         <div class="error-msg" id="err_age"></div>
       </div>
       <div class="param-group">
-        <label>現有資產 (NT$)<span class="info-tip" data-tip="目前可以拿來投資的總金額，包含存款、股票、基金等">&#9432;</span></label>
+        <label for="p_assets">現有資產 (NT$)<span class="info-tip" data-tip="目前可以拿來投資的總金額，包含存款、股票、基金等">&#9432;</span></label>
         <input type="text" inputmode="numeric" id="p_assets" value="0">
         <div class="error-msg" id="err_assets"></div>
       </div>
       <div class="param-group">
-        <label>年收入 (NT$)<span class="info-tip" data-tip="預設為 113 年台灣薪資中位數 54.6 萬（主計總處）">&#9432;</span></label>
+        <label for="p_income">年收入 (NT$)<span class="info-tip" data-tip="預設為 113 年台灣薪資中位數 54.6 萬（主計總處）">&#9432;</span></label>
         <input type="text" inputmode="numeric" id="p_income" value="546,000">
         <div class="error-msg" id="err_income"></div>
       </div>
       <div class="param-group">
-        <label>年支出 (NT$)<span class="info-tip" data-tip="預設為 113 年台灣每人消費支出約 32 萬（主計總處家庭收支調查）">&#9432;</span></label>
+        <label for="p_expenses">年支出 (NT$)<span class="info-tip" data-tip="預設為 113 年台灣每人消費支出約 32 萬（主計總處家庭收支調查）">&#9432;</span></label>
         <input type="text" inputmode="numeric" id="p_expenses" value="320,000">
         <div class="error-msg" id="err_expenses"></div>
       </div>
@@ -457,7 +479,7 @@
       <summary>進階設定</summary>
       <div class="param-grid" style="margin-top:1rem;">
         <div class="param-group">
-          <label>投資標的<span class="info-tip" data-tip="選擇後會自動帶入該標的成立以來的年化報酬率（含息再投入）。歷史報酬不代表未來績效">&#9432;</span></label>
+          <label for="p_etf">投資標的<span class="info-tip" data-tip="選擇後會自動帶入該標的成立以來的年化報酬率（含息再投入）。歷史報酬不代表未來績效">&#9432;</span></label>
           <select id="p_etf">
             <option value="">自訂</option>
             <option value="12.5">0050 台灣50（12.5%）</option>
@@ -468,24 +490,27 @@
           </select>
         </div>
         <div class="param-group">
-          <label>年報酬率 (%)<span class="info-tip" data-tip="你預期投資組合每年平均能賺多少。數字越高假設越樂觀，沒把握的話建議保守一點，結果會更可靠">&#9432;</span></label>
+          <label for="p_return">年報酬率 (%)<span class="info-tip" data-tip="你預期投資組合每年平均能賺多少。數字越高假設越樂觀，沒把握的話建議保守一點，結果會更可靠">&#9432;</span></label>
           <input type="number" id="p_return" value="7" step="0.5" min="1" max="15">
           <div class="error-msg" id="err_return"></div>
         </div>
         <div class="param-group">
-          <label>通膨率 (%)<span class="info-tip" data-tip="物價每年上漲的幅度。台灣近年約 2-3%">&#9432;</span></label>
+          <label for="p_inflation">通膨率 (%)<span class="info-tip" data-tip="物價每年上漲的幅度。台灣近年約 2-3%">&#9432;</span></label>
           <input type="number" id="p_inflation" value="3" step="0.5" min="0" max="10">
           <div class="error-msg" id="err_inflation"></div>
         </div>
       </div>
       <div class="param-grid" style="margin-top:1rem;">
         <div class="param-group">
-          <label>薪資年成長率 (%)<span class="info-tip" data-tip="每年薪資成長幅度，0% 代表薪水固定不變。不含通膨，純粹是加薪幅度">&#9432;</span></label>
+          <label for="p_incGrowRate">薪資年成長率 (%)<span class="info-tip" data-tip="每年薪資成長幅度，0% 代表薪水固定不變。不含通膨，純粹是加薪幅度">&#9432;</span></label>
           <input type="number" id="p_incGrowRate" value="0" step="0.5" min="0" max="10">
           <div class="error-msg" id="err_incGrowRate"></div>
         </div>
       </div>
     </details>
+    <div style="text-align:right;margin-top:0.75rem;">
+      <button id="resetBtn" style="background:none;border:none;color:var(--text-muted);font-size:0.78rem;cursor:pointer;text-decoration:underline;padding:0;" onclick="resetDefaults()">重設為預設值</button>
+    </div>
   </div>
 </section>
 
@@ -496,7 +521,7 @@
     <div class="chart-box">
       <div class="desc" id="c3Summary"></div>
       <div class="desc" id="dragHint" style="color:var(--accent);margin-bottom:0.5rem;transition:opacity 0.5s;">💡 試試拖拉圖表上的紫色和綠色控制點</div>
-      <div class="chart-wrap full"><canvas id="chart3"></canvas></div>
+      <div class="chart-wrap full"><canvas id="chart3" role="img" aria-label="退休資產模擬圖表"></canvas></div>
     </div>
   </div>
 </section>
@@ -519,16 +544,18 @@
       <p>每行的資產是該年齡的年初資產，約等於上方圖表滑到同一年齡時顯示的數字（圖表四捨五入到萬，表格精確到元）。收入、支出、投資報酬是該年發生的事，結果反映在下一行。</p>
       <p style="margin-top:0.4rem;">計算順序：先用年初資產算投資報酬，再加收入、扣支出（當年薪水不參與當年報酬）。</p>
     </div>
-    <div class="yearly-table-scroll">
-      <table class="yearly-table">
-        <thead><tr><th>年齡</th><th>年度</th><th>資產(名目)<span class="info-tip" data-tip="帳面上的金額，尚未扣除通膨影響">&#9432;</span></th><th>資產(實質)<span class="info-tip" data-tip="扣除通膨後的購買力，也就是用今天的幣值來看值多少錢">&#9432;</span></th><th>收入</th><th>支出</th><th>投資報酬<span class="info-tip" data-tip="用年初資產 × 報酬率算出，當年收入不參與計算">&#9432;</span></th></tr></thead>
-        <tbody id="yearlyTbody"></tbody>
-      </table>
+    <div class="yearly-table-scroll-wrap">
+      <div class="yearly-table-scroll">
+        <table class="yearly-table">
+          <thead><tr><th>年齡</th><th>年度</th><th>資產(名目)<span class="info-tip" data-tip="帳面上的金額，尚未扣除通膨影響">&#9432;</span></th><th>資產(實質)<span class="info-tip" data-tip="扣除通膨後的購買力，也就是用今天的幣值來看值多少錢">&#9432;</span></th><th>收入</th><th>支出</th><th>投資報酬<span class="info-tip" data-tip="用年初資產 × 報酬率算出，當年收入不參與計算">&#9432;</span></th></tr></thead>
+          <tbody id="yearlyTbody"></tbody>
+        </table>
+      </div>
     </div>
   </details>
 </div>
 
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast" role="alert" aria-live="assertive"></div>
 
 <section class="notes">
   <h2><span class="icon">&#9432;</span> 關於此計算</h2>
@@ -587,6 +614,21 @@
 </div>
 
 <script>
+document.addEventListener("DOMContentLoaded", function() {
+
+// ── roundRect polyfill for older browsers ──
+if (!CanvasRenderingContext2D.prototype.roundRect) {
+  CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+    r = typeof r === "number" ? r : (Array.isArray(r) ? r[0] : 0);
+    this.moveTo(x + r, y);
+    this.arcTo(x + w, y, x + w, y + h, r);
+    this.arcTo(x + w, y + h, x, y + h, r);
+    this.arcTo(x, y + h, x, y, r);
+    this.arcTo(x, y, x + w, y, r);
+    this.closePath();
+  };
+}
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 //  Simulation Engine (mirrors retirement_sim.py)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -644,7 +686,7 @@ function restoreParams() {
   } catch(e) {}
 }
 
-function shareURL() {
+window.shareURL = function() {
   const params = new URLSearchParams();
   ALL_FIELDS.forEach(id => {
     const el = document.getElementById(id);
@@ -661,11 +703,22 @@ function shareURL() {
   });
 }
 
+const DEFAULTS = { p_age: "22", p_assets: "0", p_income: "546,000", p_expenses: "320,000", p_return: "7", p_inflation: "3", p_incGrowRate: "0" };
+window.resetDefaults = function() {
+  Object.entries(DEFAULTS).forEach(([id, val]) => { document.getElementById(id).value = val; });
+  document.getElementById("p_etf").value = "";
+  saveParams();
+  recalculate();
+  showToast("已重設為預設值");
+}
+
+let toastTimer;
 function showToast(msg) {
   const el = document.getElementById("toast");
   el.textContent = msg;
   el.classList.add("show");
-  setTimeout(() => el.classList.remove("show"), 2000);
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove("show"), 2000);
 }
 
 // Auto-format money fields on input
@@ -817,8 +870,8 @@ function legendHover(evt, legendItem, legend) {
 }
 function legendLeave(evt, legendItem, legend) {
   legend.chart.data.datasets.forEach(ds => {
-    if (ds._origBorderColor) ds.borderColor = ds._origBorderColor;
-    if (ds._origBorderWidth) ds.borderWidth = ds._origBorderWidth;
+    if (ds._origBorderColor != null) ds.borderColor = ds._origBorderColor;
+    if (ds._origBorderWidth != null) ds.borderWidth = ds._origBorderWidth;
   });
   legend.chart.update("none");
 }
@@ -987,6 +1040,10 @@ function c3GetIncOverride() {
   if (!c3IncHasMoved()) return undefined;
   return { startAge: c3IncAge, amount: c3IncAmount * 1e4 };
 }
+// Pulse animation state for drag handles
+let c3PulseStart = 0;
+const C3_PULSE_DURATION = 4000; // pulse for 4 seconds after render
+
 // Draw plugin — retirement line + income bar
 const dragLinePlugin = {
   id: "dragLine",
@@ -1107,6 +1164,28 @@ const dragLinePlugin = {
     ctx.strokeText(c3RetireAge + " 歲退休", lineX, cy + ph + 16);
     ctx.fillText(c3RetireAge + " 歲退休", lineX, cy + ph + 16);
     ctx.restore();
+
+    // ── Pulse rings on handles for discoverability ──
+    if (c3PulseStart && !c3Dragging && !c3IncDragging) {
+      const elapsed = Date.now() - c3PulseStart;
+      if (elapsed < C3_PULSE_DURATION) {
+        const t = (elapsed % 1200) / 1200; // cycle every 1.2s
+        const alpha = Math.max(0, 0.5 - t * 0.5);
+        const radius = 12 + t * 20;
+        ctx.save();
+        ctx.lineWidth = 2;
+        // Purple handle pulse
+        ctx.strokeStyle = `rgba(99,102,241,${alpha})`;
+        ctx.beginPath(); ctx.arc(lineX, cy, radius, 0, Math.PI * 2); ctx.stroke();
+        // Green handle pulse
+        ctx.strokeStyle = `rgba(34,197,94,${alpha})`;
+        ctx.beginPath(); ctx.arc(incX, incY, radius, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+        requestAnimationFrame(() => chart.draw());
+      } else {
+        c3PulseStart = 0;
+      }
+    }
   }
 };
 
@@ -1153,7 +1232,7 @@ function c3BindEvents(canvas, chart) {
     if (c3IncIsNear(chart, x, y)) {
       c3IncDragging = true; canvas.setPointerCapture(e.pointerId);
       canvas.style.cursor = "move"; chart.draw();
-    } else if (c3IsNear(chart, x)) {
+    } else if (c3RetHandleIsNear(chart, x, y)) {
       c3Dragging = true; canvas.setPointerCapture(e.pointerId);
       canvas.style.cursor = "grabbing"; chart.draw();
     }
@@ -1179,15 +1258,16 @@ function c3BindEvents(canvas, chart) {
       if (newAge !== c3IncAge || newAmt !== c3IncAmount) {
         c3IncAge = newAge; c3IncAmount = newAmt;
         c3UpdateData(chart, getParams());
+      } else {
+        chart.draw();
       }
-      chart.draw();
     } else if (c3Dragging) {
       const newAge = c3XToAge(chart, x);
       if (newAge !== c3RetireAge) { c3RetireAge = newAge; c3UpdateData(chart, getParams()); }
-      chart.draw();
+      else { chart.draw(); }
     } else {
       const nearInc = c3IncIsNear(chart, x, y);
-      const nearRet = !nearInc && c3IsNear(chart, x);
+      const nearRet = !nearInc && c3RetHandleIsNear(chart, x, y);
       if (nearInc !== c3IncHovered || nearRet !== c3Hovered) {
         c3IncHovered = nearInc; c3Hovered = nearRet;
         canvas.style.cursor = nearInc ? "move" : nearRet ? "grab" : "";
@@ -1245,13 +1325,17 @@ function renderChart3(p, retAge) {
     plugins: [dragLinePlugin],
   });
   c3BindEvents(document.getElementById("chart3"), charts.c3);
+  c3PulseStart = Date.now();
 }
 
-function updateConclusion(earliest) {
+function updateConclusion(earliest, p) {
   const el = document.getElementById("conclusion");
   if (earliest !== null) {
     el.className = "conclusion";
     el.innerHTML = `照這個節奏，最快 <strong>${earliest} 歲</strong> 就能退休`;
+  } else if (p && p.expenses > p.income) {
+    el.className = "conclusion warn";
+    el.innerHTML = `目前支出大於收入，沒辦法存到錢。先想辦法讓收支打平吧`;
   } else {
     el.className = "conclusion warn";
     el.innerHTML = `以目前條件，可能要工作到⋯⋯很久以後。調整一下數字試試？`;
@@ -1361,7 +1445,7 @@ function recalculate() {
   c3IncAmount = incWan;
   const earliest = findEarliest(p);
   renderMetrics(p);
-  updateConclusion(earliest);
+  updateConclusion(earliest, p);
 
   // ── Chart 3: Sensitivity (draggable retire line + income bar) ──
   const retAge = earliest !== null ? earliest : Math.min(65, p.deathAge - 1);
@@ -1416,6 +1500,7 @@ document.addEventListener("click", e => {
 
 // Initial render
 recalculate();
+}); // end DOMContentLoaded
 </script>
 
 </body>
