@@ -51,4 +51,4 @@ Tests require the dev server on port 3000 (`npx serve . -l 3000`); Playwright st
 ## Rules
 
 - All UI text is in Traditional Chinese (zh-TW). Maintain this convention.
-- **每次 `git push` 或部署前都必須先詢問使用者並取得明確同意，沒有例外。** 使用者說「改」只代表修改程式碼，不代表授權推送。只有使用者明確說出「push」、「deploy」、「部署」等字眼時才可以推送。
+- **禁止直接執行 `git push` 或部署。** 所有推送都必須透過 `/deploy` 指令（預設 minor bump，可傳 `major`）。指令會自動跑測試、bump footer 版本號、commit、push。使用者說「改」只代表修改程式碼，不代表授權推送。
