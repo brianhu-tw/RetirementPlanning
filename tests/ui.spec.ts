@@ -551,7 +551,7 @@ test.describe("P6: loan collapsible + dual mode", () => {
     await expect(rowLabel).toBeHidden();
   });
 
-  test("precise mode header shows correct columns including monthly", async ({ page }) => {
+  test("precise mode header shows correct columns including grace and monthly", async ({ page }) => {
     await setup(page);
     await addLoanPrecise(page, "房貸", "8,000,000", "2.1", "240");
     const header = page.locator(".loan-header");
@@ -560,6 +560,7 @@ test.describe("P6: loan collapsible + dual mode", () => {
     await expect(header).toContainText("貸款餘額");
     await expect(header).toContainText("年利率");
     await expect(header).toContainText("剩餘期數");
+    await expect(header).toContainText("寬限期");
     await expect(header).toContainText("月付額");
   });
 
@@ -1083,5 +1084,87 @@ test.describe("PWA setup", () => {
     const resp512 = await page.request.get("/icons/icon-512.png");
     expect(resp512.ok()).toBe(true);
     expect(resp512.headers()["content-type"]).toContain("image/png");
+  });
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Grace period (寬限期) UI
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+test.describe("grace period UI", () => {
+  test("precise mode directly shows grace period input (no checkbox)", async ({ page }) => {
+    await setup(page);
+    await switchLoanMode(page, "precise");
+    await page.locator("#addLoanBtn").click();
+    await page.waitForTimeout(200);
+    const graceInput = page.locator('.loan-row input[data-field="gracePeriodMonths"]');
+    await expect(graceInput).toBeVisible();
+    expect(await graceInput.inputValue()).toBe("0");
+    // No checkbox should exist
+    await expect(page.locator('.loan-row .grace-toggle')).toHaveCount(0);
+  });
+
+  test("simple mode does not show grace period input", async ({ page }) => {
+    await setup(page);
+    await ensureLoanSectionOpen(page);
+    await page.locator("#addLoanBtn").click();
+    await page.waitForTimeout(200);
+    const graceInput = page.locator('.loan-row input[data-field="gracePeriodMonths"]');
+    await expect(graceInput).toHaveCount(0);
+  });
+
+  test("filling grace period months shows dual monthly display", async ({ page }) => {
+    await setup(page);
+    await addLoanPrecise(page, "房貸", "8,000,000", "2.1", "360");
+    // Grace input should already be visible — fill it directly
+    await page.locator('.loan-row input[data-field="gracePeriodMonths"]').fill("36");
+    await page.locator('.loan-row input[data-field="gracePeriodMonths"]').blur();
+    await page.waitForTimeout(400);
+    // Should show grace period amount AND normal amount
+    const display = page.locator('.loan-row .loan-monthly-display');
+    const text = await display.textContent();
+    expect(text).toContain("寬限");
+    // Grace monthly = 8,000,000 × 0.021 / 12 = 14,000
+    expect(text).toContain("14,000");
+  });
+
+  test("grace period 0 shows normal monthly payment", async ({ page }) => {
+    await setup(page);
+    await addLoanPrecise(page, "房貸", "8,000,000", "2.1", "240");
+    const graceInput = page.locator('.loan-row input[data-field="gracePeriodMonths"]');
+    expect(await graceInput.inputValue()).toBe("0");
+    // Monthly display should show normal payment, no 寬限 text
+    const display = page.locator('.loan-row .loan-monthly-display');
+    const text = await display.textContent();
+    expect(text).not.toContain("寬限");
+    expect(text).toContain("40,851");
+  });
+
+  test("grace period persists across reload", async ({ page }) => {
+    await setup(page);
+    await addLoanPrecise(page, "房貸", "8,000,000", "2.1", "360");
+    await page.locator('.loan-row input[data-field="gracePeriodMonths"]').fill("36");
+    await page.locator('.loan-row input[data-field="gracePeriodMonths"]').blur();
+    await page.waitForTimeout(400);
+    // Reload
+    await page.reload();
+    await page.waitForFunction(() => document.readyState === "complete");
+    await page.waitForTimeout(300);
+    const graceInput = page.locator('.loan-row input[data-field="gracePeriodMonths"]');
+    expect(await graceInput.inputValue()).toBe("36");
+  });
+
+  test("precise→simple switch uses grace period monthly for auto-fill", async ({ page }) => {
+    await setup(page);
+    await addLoanPrecise(page, "房貸", "8,000,000", "2.1", "360");
+    await page.locator('.loan-row input[data-field="gracePeriodMonths"]').fill("36");
+    await page.locator('.loan-row input[data-field="gracePeriodMonths"]').blur();
+    await page.waitForTimeout(400);
+    // Switch to simple — monthlyPayment should be auto-filled with current grace payment
+    await switchLoanMode(page, "simple");
+    const mp = page.locator('.loan-row input[data-field="monthlyPayment"]');
+    const val = await mp.inputValue();
+    // Grace payment = 8,000,000 × 0.021 / 12 = 14,000
+    expect(val).toContain("14,000");
   });
 });

@@ -675,3 +675,124 @@ test.describe("buildLoanFormula", () => {
     expect(result).toContain("240,000");   // 20,000 * 12
   });
 });
+
+// ─── calcYearLoanPayment with grace period ───
+test.describe("calcYearLoanPayment with grace period", () => {
+  test("全年寬限期 → 只付利息", async ({ page }) => {
+    const call = await fire(page);
+    // balance=6,000,000, rate=2%, grace=36 months, remaining=240
+    // 寬限期月付 = 6,000,000 × 0.02 / 12 = 10,000
+    // yearIndex=0 → 12 months all in grace → 10,000 × 12 = 120,000
+    const loans = [{ name: "房貸", monthlyPayment: 0, balance: 6_000_000, rate: 0.02, remainingMonths: 240, gracePeriodMonths: 36 }];
+    expect(await call("calcYearLoanPayment", loans, 0, "precise")).toBe(120_000);
+  });
+
+  test("寬限期跨年 — 部分寬限、部分正常攤還", async ({ page }) => {
+    const call = await fire(page);
+    // grace=6 months, remaining=240, balance=4,800,000, rate=0%
+    // 寬限期月付 = 4,800,000 × 0 / 12 = 0
+    // 正常期月付 = calcMonthlyPayment(4,800,000, 0, (240-6)/12) = 4,800,000 / 234 ≈ 20,513 → Math.round
+    // yearIndex=0: 6 months grace (0 each) + 6 months normal (20,513 each)
+    const loans = [{ name: "房貸", monthlyPayment: 0, balance: 4_800_000, rate: 0, remainingMonths: 240, gracePeriodMonths: 6 }];
+    const result = await call("calcYearLoanPayment", loans, 0, "precise");
+    // 正常期月付 = round(4,800,000 / 234) = 20,513
+    const normalMp = Math.round(4_800_000 / 234);
+    expect(result).toBe(normalMp * 6);
+  });
+
+  test("寬限期已過 — 整年正常攤還", async ({ page }) => {
+    const call = await fire(page);
+    // grace=12, remaining=240 → yearIndex=1 (monthStart=12) → grace已結束
+    // 正常期月付 = calcMonthlyPayment(balance, rate, (240-12)/12)
+    const loans = [{ name: "房貸", monthlyPayment: 0, balance: 4_800_000, rate: 0, remainingMonths: 240, gracePeriodMonths: 12 }];
+    const result = await call("calcYearLoanPayment", loans, 1, "precise");
+    const normalMp = Math.round(4_800_000 / ((240 - 12)));
+    expect(result).toBe(normalMp * 12);
+  });
+
+  test("gracePeriodMonths=0 等同無寬限期（回歸）", async ({ page }) => {
+    const call = await fire(page);
+    const loans = [{ name: "房貸", monthlyPayment: 0, balance: 4_800_000, rate: 0, remainingMonths: 240, gracePeriodMonths: 0 }];
+    const withGrace = await call("calcYearLoanPayment", loans, 0, "precise");
+    const loansNoField = [{ name: "房貸", monthlyPayment: 0, balance: 4_800_000, rate: 0, remainingMonths: 240 }];
+    const without = await call("calcYearLoanPayment", loansNoField, 0, "precise");
+    expect(withGrace).toBe(without);
+  });
+
+  test("simple 模式忽略寬限期", async ({ page }) => {
+    const call = await fire(page);
+    const loans = [{ name: "房貸", monthlyPayment: 40000, balance: 6_000_000, rate: 0.02, remainingMonths: 240, gracePeriodMonths: 36 }];
+    // simple mode: always uses monthlyPayment regardless of grace
+    expect(await call("calcYearLoanPayment", loans, 0, "simple")).toBe(40000 * 12);
+  });
+
+  test("寬限期 >= 剩餘期數 → 全部只付利息", async ({ page }) => {
+    const call = await fire(page);
+    // grace=240 = remaining=240 → 全部都在寬限期
+    const loans = [{ name: "房貸", monthlyPayment: 0, balance: 6_000_000, rate: 0.02, remainingMonths: 240, gracePeriodMonths: 240 }];
+    // 月付 = 6,000,000 × 0.02 / 12 = 10,000
+    expect(await call("calcYearLoanPayment", loans, 0, "precise")).toBe(10_000 * 12);
+    // yearIndex=19 (last year, monthStart=228, active=12): still grace
+    expect(await call("calcYearLoanPayment", loans, 19, "precise")).toBe(10_000 * 12);
+  });
+
+  test("0% 利率寬限期 → 月付 = 0", async ({ page }) => {
+    const call = await fire(page);
+    const loans = [{ name: "房貸", monthlyPayment: 0, balance: 5_000_000, rate: 0, remainingMonths: 240, gracePeriodMonths: 24 }];
+    // yearIndex=0: grace period, rate=0 → interest = 0
+    expect(await call("calcYearLoanPayment", loans, 0, "precise")).toBe(0);
+  });
+
+  test("貸款已結束仍返回 0", async ({ page }) => {
+    const call = await fire(page);
+    const loans = [{ name: "房貸", monthlyPayment: 0, balance: 6_000_000, rate: 0.02, remainingMonths: 12, gracePeriodMonths: 6 }];
+    // yearIndex=1: monthStart=12 >= remainingMonths=12 → active=0
+    expect(await call("calcYearLoanPayment", loans, 1, "precise")).toBe(0);
+  });
+});
+
+// ─── buildLoanFormula with grace period ───
+test.describe("buildLoanFormula with grace period", () => {
+  test("寬限期內顯示利息標記", async ({ page }) => {
+    const call = await fire(page);
+    const loans = [{ name: "房貸", monthlyPayment: 0, balance: 6_000_000, rate: 0.02, remainingMonths: 240, gracePeriodMonths: 36 }];
+    const result = await call("buildLoanFormula", loans, 0, "precise");
+    expect(result).toContain("寬限");
+    expect(result).toContain("10,000");
+  });
+
+  test("跨年時分段顯示寬限 + 攤還", async ({ page }) => {
+    const call = await fire(page);
+    // grace=6, yearIndex=0 → 6 months grace + 6 months normal
+    const loans = [{ name: "房貸", monthlyPayment: 0, balance: 6_000_000, rate: 0.02, remainingMonths: 240, gracePeriodMonths: 6 }];
+    const result = await call("buildLoanFormula", loans, 0, "precise");
+    expect(result).toContain("寬限");
+    expect(result).toContain("6月");
+  });
+
+  test("無寬限期時 formula 不變（回歸）", async ({ page }) => {
+    const call = await fire(page);
+    const loans = [{ name: "房貸", monthlyPayment: 40000, balance: 0, rate: 0, remainingMonths: 240, gracePeriodMonths: 0 }];
+    const resultWith = await call("buildLoanFormula", loans, 0, "simple");
+    const loansNoField = [{ name: "房貸", monthlyPayment: 40000, balance: 0, rate: 0, remainingMonths: 240 }];
+    const resultWithout = await call("buildLoanFormula", loansNoField, 0, "simple");
+    expect(resultWith).toBe(resultWithout);
+  });
+});
+
+// ─── migrateLoans with grace period ───
+test.describe("migrateLoans with grace period", () => {
+  test("舊資料無 gracePeriodMonths → 補 0", async ({ page }) => {
+    const call = await fire(page);
+    const old = [{ name: "房貸", balance: 8_000_000, rate: 0.021, remainingMonths: 360 }];
+    const result = await call("migrateLoans", old) as any[];
+    expect(result[0].gracePeriodMonths).toBe(0);
+  });
+
+  test("已有 gracePeriodMonths 的資料不被覆蓋", async ({ page }) => {
+    const call = await fire(page);
+    const data = [{ name: "房貸", balance: 8_000_000, rate: 0.021, remainingMonths: 360, gracePeriodMonths: 36 }];
+    const result = await call("migrateLoans", data) as any[];
+    expect(result[0].gracePeriodMonths).toBe(36);
+  });
+});

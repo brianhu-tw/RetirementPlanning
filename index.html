@@ -519,12 +519,19 @@
   }
   .loan-row { margin-bottom: 0.4rem; }
   .loan-header.simple,  .loan-row.simple  { grid-template-columns: 5fr 5fr 3fr 1.2rem; }
-  .loan-header.precise, .loan-row.precise { grid-template-columns: 4fr 6fr 2.5fr 2.5fr 4fr 1.2rem; }
+  .loan-header.precise, .loan-row.precise { grid-template-columns: 4fr 5fr 2.5fr 2.5fr 4fr 2.5fr 1.2rem; }
   .loan-row label { display: none; }
   @media (max-width: 600px) {
     .loan-header { display: none; }
     .loan-row label { display: block; font-size: 0.7rem; color: var(--text-muted); margin-bottom: 0.15rem; }
-    .loan-row.simple, .loan-row.precise {
+    .loan-row.simple {
+      grid-template-columns: 1fr 1fr;
+      position: relative;
+      padding-bottom: 0.6rem;
+      margin-bottom: 0.6rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .loan-row.precise {
       grid-template-columns: 1fr 1fr;
       position: relative;
       padding-bottom: 0.6rem;
@@ -532,7 +539,7 @@
       border-bottom: 1px solid var(--border);
     }
     .loan-row:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
-    .loan-row > div:first-child { grid-column: 1 / -1; }
+    .loan-row.simple > div:first-child { grid-column: 1 / -1; }
     .loan-row .loan-remove-btn {
       position: absolute;
       top: 0;
@@ -770,7 +777,7 @@
 
 <footer>
   <p>此分析僅供參考，不構成投資建議。實際報酬率會波動，當個方向參考就好。</p>
-  <p style="margin-top:0.3rem;">幾歲能退休？ v2.2 &copy; 2026 brianhu-tw</p>
+  <p style="margin-top:0.3rem;">幾歲能退休？ v2.3 &copy; 2026 brianhu-tw</p>
 </footer>
 
 </div>
@@ -833,6 +840,10 @@ const Simulation = (() => {
     return Math.round(balance * r * Math.pow(1 + r, n) / (Math.pow(1 + r, n) - 1));
   }
 
+  function calcGraceMonthlyPayment(balance, annualRate) {
+    return Math.round((balance || 0) * (annualRate || 0) / 12);
+  }
+
   function calcYearLoanPayment(loans, yearIndex, mode) {
     if (!loans || !loans.length) return 0;
     let total = 0;
@@ -840,10 +851,21 @@ const Simulation = (() => {
     for (const loan of loans) {
       const rm = loan.remainingMonths || 0;
       const active = Math.max(0, Math.min(12, rm - monthStart));
-      const mp = mode === "simple"
-        ? (loan.monthlyPayment || 0)
-        : calcMonthlyPayment(loan.balance, loan.rate, rm / 12);
-      total += mp * active;
+      if (active <= 0) continue;
+      if (mode === "simple") {
+        total += (loan.monthlyPayment || 0) * active;
+        continue;
+      }
+      const gp = loan.gracePeriodMonths || 0;
+      for (let m = 0; m < active; m++) {
+        const globalMonth = monthStart + m;
+        if (globalMonth < gp) {
+          total += calcGraceMonthlyPayment(loan.balance, loan.rate);
+        } else {
+          const remainAfterGrace = Math.max(1, rm - gp);
+          total += calcMonthlyPayment(loan.balance, loan.rate, remainAfterGrace / 12);
+        }
+      }
     }
     return total;
   }
@@ -857,12 +879,40 @@ const Simulation = (() => {
       const rm = loan.remainingMonths || 0;
       const active = Math.max(0, Math.min(12, rm - monthStart));
       if (active <= 0) continue;
-      const mp = mode === "simple"
-        ? (loan.monthlyPayment || 0)
-        : calcMonthlyPayment(loan.balance, loan.rate, rm / 12);
-      const loanTotal = mp * active;
-      total += loanTotal;
-      parts.push(`${loan.name}: ${addCommas(Math.round(mp))}/月 × ${active}月 = ${addCommas(Math.round(loanTotal))}`);
+      const gp = loan.gracePeriodMonths || 0;
+      if (mode !== "simple" && gp > 0) {
+        // Count grace vs normal months in this year
+        let graceMonths = 0, normalMonths = 0;
+        for (let m = 0; m < active; m++) {
+          if (monthStart + m < gp) graceMonths++; else normalMonths++;
+        }
+        const graceMp = calcGraceMonthlyPayment(loan.balance, loan.rate);
+        const remainAfterGrace = Math.max(1, rm - gp);
+        const normalMp = calcMonthlyPayment(loan.balance, loan.rate, remainAfterGrace / 12);
+        let loanTotal = 0;
+        if (graceMonths > 0 && normalMonths > 0) {
+          const gt = graceMp * graceMonths;
+          const nt = normalMp * normalMonths;
+          loanTotal = gt + nt;
+          total += loanTotal;
+          parts.push(`${loan.name}(寬限): ${addCommas(graceMp)}/月 × ${graceMonths}月 = ${addCommas(gt)}\n${loan.name}(正常): ${addCommas(normalMp)}/月 × ${normalMonths}月 = ${addCommas(nt)}`);
+        } else if (graceMonths > 0) {
+          loanTotal = graceMp * graceMonths;
+          total += loanTotal;
+          parts.push(`${loan.name}(寬限): ${addCommas(graceMp)}/月 × ${graceMonths}月 = ${addCommas(loanTotal)}`);
+        } else {
+          loanTotal = normalMp * normalMonths;
+          total += loanTotal;
+          parts.push(`${loan.name}: ${addCommas(normalMp)}/月 × ${normalMonths}月 = ${addCommas(loanTotal)}`);
+        }
+      } else {
+        const mp = mode === "simple"
+          ? (loan.monthlyPayment || 0)
+          : calcMonthlyPayment(loan.balance, loan.rate, rm / 12);
+        const loanTotal = mp * active;
+        total += loanTotal;
+        parts.push(`${loan.name}: ${addCommas(Math.round(mp))}/月 × ${active}月 = ${addCommas(Math.round(loanTotal))}`);
+      }
     }
     if (parts.length === 0) return "";
     if (parts.length === 1) return parts[0];
@@ -932,11 +982,11 @@ const Simulation = (() => {
     return [base - 0.02, base, base + 0.02];
   }
 
-  return { calcMonthlyPayment, calcYearLoanPayment, buildLoanFormula, simulate, findEarliest, c3Returns };
+  return { calcMonthlyPayment, calcGraceMonthlyPayment, calcYearLoanPayment, buildLoanFormula, simulate, findEarliest, c3Returns };
 })();
 
 // Shorthand aliases (backward compat for rest of file)
-const { calcMonthlyPayment, calcYearLoanPayment, buildLoanFormula, simulate, findEarliest, c3Returns } = Simulation;
+const { calcMonthlyPayment, calcGraceMonthlyPayment, calcYearLoanPayment, buildLoanFormula, simulate, findEarliest, c3Returns } = Simulation;
 
 // ══════════════════════════════════════
 // Module: Input
@@ -1150,6 +1200,7 @@ function migrateLoans(arr) {
       l = { name: l.name, balance: l.balance || 0, rate: l.rate || 0, remainingMonths: Math.round(l.remainingYears * 12) };
     }
     if (l.monthlyPayment == null) l.monthlyPayment = 0;
+    if (l.gracePeriodMonths == null) l.gracePeriodMonths = 0;
     return l;
   });
 }
@@ -1174,7 +1225,7 @@ function renderLoanRows() {
     if (loanMode === "simple") {
       header = `<div class="loan-header simple"><span>名稱</span><span>每月還款 (NT$)</span><span>剩餘期數（月）</span><span></span></div>`;
     } else {
-      header = `<div class="loan-header precise"><span>名稱</span><span>貸款餘額 (NT$)</span><span>年利率 (%)</span><span>剩餘期數（月）</span><span>月付額</span><span></span></div>`;
+      header = `<div class="loan-header precise"><span>名稱</span><span>貸款餘額 (NT$)</span><span>年利率 (%)</span><span>剩餘期數（月）</span><span>月付額</span><span>寬限期（月）</span><span></span></div>`;
     }
   }
   const rows = loans.map((loan, i) => {
@@ -1188,8 +1239,18 @@ function renderLoanRows() {
         <button type="button" class="loan-remove-btn" title="刪除">&times;</button>
       </div>`;
     } else {
-      const mp = calcMonthlyPayment(loan.balance || 0, loan.rate || 0, rm / 12);
-      const mpText = mp > 0 ? addCommas(mp) : "—";
+      const gp = loan.gracePeriodMonths || 0;
+      const hasGrace = gp > 0;
+      let mpText;
+      if (hasGrace) {
+        const graceMp = calcGraceMonthlyPayment(loan.balance || 0, loan.rate || 0);
+        const remainAfterGrace = Math.max(1, rm - gp);
+        const normalMp = calcMonthlyPayment(loan.balance || 0, loan.rate || 0, remainAfterGrace / 12);
+        mpText = `寬限 ${addCommas(graceMp)} → 之後 ${normalMp > 0 ? addCommas(normalMp) : "—"}`;
+      } else {
+        const mp = calcMonthlyPayment(loan.balance || 0, loan.rate || 0, rm / 12);
+        mpText = mp > 0 ? addCommas(mp) : "—";
+      }
       return `
       <div class="loan-row precise" data-index="${i}">
         <div><label>名稱</label><input type="text" data-field="name" value="${escAttr(loan.name || "")}"></div>
@@ -1197,6 +1258,7 @@ function renderLoanRows() {
         <div><label>年利率 (%)</label><input type="number" inputmode="decimal" data-field="rate" value="${loan.rate ? +(loan.rate * 100).toFixed(2) : 0}" min="0" step="0.1"></div>
         <div><label>剩餘期數（月）</label><input type="number" inputmode="numeric" data-field="remainingMonths" value="${rm}" min="0" step="1"></div>
         <div><label>月付額</label><span class="loan-monthly-display">${mpText}</span></div>
+        <div><label>寬限期（月）</label><input type="number" inputmode="numeric" data-field="gracePeriodMonths" value="${gp}" min="0" step="1"></div>
         <button type="button" class="loan-remove-btn" title="刪除">&times;</button>
       </div>`;
     }
@@ -1236,8 +1298,16 @@ function bindLoanEvents() {
       function updateMonthlyDisplay() {
         const display = row.querySelector(".loan-monthly-display");
         const rm = loans[idx].remainingMonths || 0;
-        const mp = calcMonthlyPayment(loans[idx].balance || 0, loans[idx].rate || 0, rm / 12);
-        display.textContent = mp > 0 ? addCommas(mp) : "—";
+        const gp = loans[idx].gracePeriodMonths || 0;
+        if (gp > 0) {
+          const graceMp = calcGraceMonthlyPayment(loans[idx].balance || 0, loans[idx].rate || 0);
+          const remainAfterGrace = Math.max(1, rm - gp);
+          const normalMp = calcMonthlyPayment(loans[idx].balance || 0, loans[idx].rate || 0, remainAfterGrace / 12);
+          display.textContent = `寬限 ${addCommas(graceMp)} → 之後 ${normalMp > 0 ? addCommas(normalMp) : "—"}`;
+        } else {
+          const mp = calcMonthlyPayment(loans[idx].balance || 0, loans[idx].rate || 0, rm / 12);
+          display.textContent = mp > 0 ? addCommas(mp) : "—";
+        }
       }
       initMoneyInput(row.querySelector('input[data-field="balance"]'), {
         defaultVal: "0",
@@ -1253,6 +1323,11 @@ function bindLoanEvents() {
         defaultVal: "0", integer: true, normalize: true, min: 0,
         onInput(v) { loans[idx].remainingMonths = v; saveLoans(); updateMonthlyDisplay(); },
         onBlur(v)  { loans[idx].remainingMonths = v; saveLoans(); updateMonthlyDisplay(); recalculate(); }
+      });
+      initNumberInput(row.querySelector('input[data-field="gracePeriodMonths"]'), {
+        defaultVal: "0", integer: true, normalize: true, min: 0,
+        onInput(v) { loans[idx].gracePeriodMonths = v; saveLoans(); updateMonthlyDisplay(); },
+        onBlur(v)  { loans[idx].gracePeriodMonths = v; saveLoans(); updateMonthlyDisplay(); recalculate(); }
       });
     }
   });
@@ -1423,7 +1498,13 @@ document.querySelectorAll("#loansSection .loan-mode-toggle button").forEach(btn 
     if (loanMode === "precise" && newMode === "simple") {
       loans.forEach(loan => {
         const rm = loan.remainingMonths || 0;
-        loan.monthlyPayment = calcMonthlyPayment(loan.balance || 0, loan.rate || 0, rm / 12);
+        const gp = loan.gracePeriodMonths || 0;
+        if (gp > 0) {
+          // Currently in grace period: use grace monthly payment
+          loan.monthlyPayment = calcGraceMonthlyPayment(loan.balance || 0, loan.rate || 0);
+        } else {
+          loan.monthlyPayment = calcMonthlyPayment(loan.balance || 0, loan.rate || 0, rm / 12);
+        }
       });
       saveLoans();
     }
@@ -2213,8 +2294,8 @@ recalculate();
 if (window.__TEST__) {
   window.__FIRE__ = {
     clamp, stripCommas, addCommas, simulate, findEarliest,
-    calcMonthlyPayment, calcYearLoanPayment,
-    escAttr, buildLoanFormula,
+    calcMonthlyPayment, calcGraceMonthlyPayment, calcYearLoanPayment,
+    migrateLoans, escAttr, buildLoanFormula,
     c3Returns, hexAlpha, validateAll, getParams, recalculate,
     currentAge, saveParams, restoreParams, VALIDATIONS, DEFAULTS,
     get loans() { return loans; },
