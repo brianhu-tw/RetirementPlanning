@@ -1007,3 +1007,81 @@ test.describe("mobile info-tip tooltips", () => {
     await ctx.close();
   });
 });
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// PWA: manifest, meta tags, service worker
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+test.describe("PWA setup", () => {
+  test("link rel=manifest exists and points to manifest.json", async ({ page }) => {
+    await setup(page);
+    const link = page.locator('link[rel="manifest"]');
+    await expect(link).toHaveCount(1);
+    const href = await link.getAttribute("href");
+    expect(href).toBe("manifest.json");
+  });
+
+  test("apple-mobile-web-app-capable meta exists", async ({ page }) => {
+    await setup(page);
+    const meta = page.locator('meta[name="apple-mobile-web-app-capable"]');
+    await expect(meta).toHaveCount(1);
+    expect(await meta.getAttribute("content")).toBe("yes");
+  });
+
+  test("apple-touch-icon link exists", async ({ page }) => {
+    await setup(page);
+    const link = page.locator('link[rel="apple-touch-icon"]');
+    await expect(link).toHaveCount(1);
+    expect(await link.getAttribute("href")).toContain("icon");
+  });
+
+  test("manifest.json is valid and has required fields", async ({ page }) => {
+    await setup(page);
+    const resp = await page.request.get("/manifest.json");
+    expect(resp.ok()).toBe(true);
+    const manifest = await resp.json();
+    expect(manifest.name).toBeTruthy();
+    expect(manifest.short_name).toBeTruthy();
+    expect(manifest.display).toBe("standalone");
+    expect(manifest.icons).toBeInstanceOf(Array);
+    expect(manifest.icons.length).toBeGreaterThanOrEqual(2);
+    // Check icon sizes
+    const sizes = manifest.icons.map((i: any) => i.sizes);
+    expect(sizes).toContain("192x192");
+    expect(sizes).toContain("512x512");
+  });
+
+  test("service worker registration script exists", async ({ page }) => {
+    await setup(page);
+    const swScript = await page.evaluate(() => {
+      const scripts = document.querySelectorAll("script");
+      for (const s of scripts) {
+        if (s.textContent && s.textContent.includes("serviceWorker") && s.textContent.includes("register")) {
+          return true;
+        }
+      }
+      return false;
+    });
+    expect(swScript).toBe(true);
+  });
+
+  test("sw.js is accessible", async ({ page }) => {
+    await setup(page);
+    const resp = await page.request.get("/sw.js");
+    expect(resp.ok()).toBe(true);
+    const text = await resp.text();
+    expect(text).toContain("install");
+    expect(text).toContain("fetch");
+    expect(text).toContain("caches");
+  });
+
+  test("icon PNGs are accessible", async ({ page }) => {
+    await setup(page);
+    const resp192 = await page.request.get("/icons/icon-192.png");
+    expect(resp192.ok()).toBe(true);
+    expect(resp192.headers()["content-type"]).toContain("image/png");
+    const resp512 = await page.request.get("/icons/icon-512.png");
+    expect(resp512.ok()).toBe(true);
+    expect(resp512.headers()["content-type"]).toContain("image/png");
+  });
+});

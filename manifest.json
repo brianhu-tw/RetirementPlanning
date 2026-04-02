@@ -1,0 +1,14 @@
+{
+  "name": "幾歲能退休？退休金計算模擬器",
+  "short_name": "幾歲退休",
+  "description": "FIRE 財務自由退休規劃計算器",
+  "start_url": "/fire/",
+  "scope": "/fire/",
+  "display": "standalone",
+  "background_color": "#0f1117",
+  "theme_color": "#0f1117",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
