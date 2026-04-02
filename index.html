@@ -718,11 +718,11 @@
   <div class="notes-grid">
     <div class="note-item">
       <h4>圖表顯示「實質」購買力</h4>
-      <p>圖表上的金額已扣除通膨影響。例如 30 年後帳面上的 1,000 萬，以今天的購買力來看可能只值 400 多萬。圖表顯示的就是那個 400 多萬——你實際感受到的價值。逐年試算表格則同時列出名目與實質金額，方便對照。</p>
+      <p>圖表上的金額已扣除通膨影響。例如 30 年後帳面上的 1,000 萬，以今天的購買力來看可能只值 400 多萬。圖表顯示的就是那個 400 多萬，也就是你實際感受到的價值。逐年試算表格則同時列出名目與實質金額，方便對照。</p>
     </div>
     <div class="note-item">
       <h4>支出隨通膨成長，收入看成長率</h4>
-      <p>支出每年依通膨率等比例增加。收入的成長由「薪資年成長率」決定——預設 0% 代表薪水固定不變，設 2% 代表每年加薪 2%（不含通膨）。通膨高、加薪慢的話，購買力會逐年下降。</p>
+      <p>支出每年依通膨率等比例增加。收入的成長由「薪資年成長率」決定，預設 0% 代表薪水固定不變，設 2% 代表每年加薪 2%（不含通膨）。通膨高、加薪慢的話，購買力會逐年下降。</p>
     </div>
     <div class="note-item">
       <h4>退休後沒收入，資產會加速縮水</h4>
@@ -746,9 +746,10 @@
         ① 起始資產 = 現有資產<br>
         ② 每年：資產 × (1 + 報酬率)<br>
         ③ 工作中：+ 年收入 × (1 + 薪資成長率)<sup>年數</sup><br>
-        ④ 每年：− 年支出 × 通膨係數<br>
-        ⑤ 通膨係數 = (1 + 通膨率)<sup>年數</sup><br>
-        ⑥ 實質購買力 = 名目資產 ÷ 通膨係數
+        ④ 每年：− 年支出 × 通膨係數 × (1 + 支出成長率)<sup>年數</sup><br>
+        ⑤ 每年：− 貸款月付額 × 剩餘月數（到期自動停止）<br>
+        ⑥ 通膨係數 = (1 + 通膨率)<sup>年數</sup><br>
+        ⑦ 實質購買力 = 名目資產 ÷ 通膨係數
       </p>
     </div>
     <div class="note-item">
@@ -757,7 +758,7 @@
     </div>
     <div class="note-item">
       <h4>你的資料不會離開你的瀏覽器</h4>
-      <p>這是一個純靜態網頁，所有計算都在你自己的瀏覽器裡完成。沒有伺服器、沒有資料庫、沒有任何追蹤碼——你填的數字只存在你的裝置上。</p>
+      <p>這是一個純靜態網頁，所有計算都在你自己的瀏覽器裡完成。沒有伺服器、沒有資料庫、沒有任何追蹤碼，你填的數字只存在你的裝置上。</p>
     </div>
   </div>
 </section>
@@ -1323,6 +1324,7 @@ window.shareURL = function() {
 }
 
 window.resetDefaults = function() {
+  if (!confirm("確定要重設所有參數為預設值？")) return;
   Object.entries(DEFAULTS).forEach(([id, val]) => { document.getElementById(id).value = val; });
   document.getElementById("p_etf").value = "12.5";
   loans = [];
@@ -2203,7 +2205,7 @@ recalculate();
 
 // Build hash
 fetch("https://api.github.com/repos/brianhu-tw/fire/commits/main",{headers:{Accept:"application/vnd.github.sha"}})
-  .then(r=>r.text()).then(h=>{document.getElementById("build-hash").textContent=h.slice(0,7)}).catch(()=>{});
+  .then(r=>{if(!r.ok)throw 0;return r.text()}).then(h=>{document.getElementById("build-hash").textContent=h.slice(0,7)}).catch(()=>{});
 
 // ── Test bridge ──
 if (window.__TEST__) {

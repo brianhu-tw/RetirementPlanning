@@ -123,6 +123,7 @@ test.describe("P3: user flows", () => {
     await page.waitForTimeout(400);
 
     // Click reset
+    page.on("dialog", d => d.accept());
     await page.locator("#resetBtn").click();
     await page.waitForTimeout(400);
 
@@ -269,6 +270,7 @@ test.describe("P5: loans UI", () => {
     await addLoan(page, "房貸", "8,000,000", "2.1", "240");
     await addLoan(page, "信貸", "300,000", "3", "36");
     await expect(page.locator(".loan-row")).toHaveCount(2);
+    page.on("dialog", d => d.accept());
     await page.locator("#resetBtn").click();
     await page.waitForTimeout(400);
     await expect(page.locator(".loan-row")).toHaveCount(0);
@@ -515,6 +517,7 @@ test.describe("P6: loan collapsible + dual mode", () => {
     await setup(page);
     await ensureLoanSectionOpen(page);
     await switchLoanMode(page, "precise");
+    page.on("dialog", d => d.accept());
     await page.locator("#resetBtn").click();
     await page.waitForTimeout(400);
     // Open section and check mode
