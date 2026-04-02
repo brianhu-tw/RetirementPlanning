@@ -519,7 +519,7 @@
   }
   .loan-row { margin-bottom: 0.4rem; }
   .loan-header.simple,  .loan-row.simple  { grid-template-columns: 5fr 5fr 3fr 1.2rem; }
-  .loan-header.precise, .loan-row.precise { grid-template-columns: 4fr 5fr 2.5fr 2.5fr 4fr 2.5fr 1.2rem; }
+  .loan-header.precise, .loan-row.precise { grid-template-columns: 4fr 5fr 2.5fr 2.5fr 2.5fr 5fr 1.2rem; }
   .loan-row label { display: none; }
   @media (max-width: 600px) {
     .loan-header { display: none; }
@@ -539,7 +539,8 @@
       border-bottom: 1px solid var(--border);
     }
     .loan-row:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
-    .loan-row.simple > div:first-child { grid-column: 1 / -1; }
+    .loan-row > div:first-child { grid-column: 1 / -1; }
+    .loan-row.precise > div:last-of-type { grid-column: 1 / -1; }
     .loan-row .loan-remove-btn {
       position: absolute;
       top: 0;
@@ -777,7 +778,7 @@
 
 <footer>
   <p>此分析僅供參考，不構成投資建議。實際報酬率會波動，當個方向參考就好。</p>
-  <p style="margin-top:0.3rem;">幾歲能退休？ v2.3 &copy; 2026 brianhu-tw</p>
+  <p style="margin-top:0.3rem;">幾歲能退休？ v2.4 &copy; 2026 brianhu-tw</p>
 </footer>
 
 </div>
@@ -1225,7 +1226,7 @@ function renderLoanRows() {
     if (loanMode === "simple") {
       header = `<div class="loan-header simple"><span>名稱</span><span>每月還款 (NT$)</span><span>剩餘期數（月）</span><span></span></div>`;
     } else {
-      header = `<div class="loan-header precise"><span>名稱</span><span>貸款餘額 (NT$)</span><span>年利率 (%)</span><span>剩餘期數（月）</span><span>月付額</span><span>寬限期（月）</span><span></span></div>`;
+      header = `<div class="loan-header precise"><span>名稱</span><span>貸款餘額 (NT$)</span><span>年利率 (%)</span><span>剩餘期數（月）</span><span>寬限期（月）</span><span>月付額</span><span></span></div>`;
     }
   }
   const rows = loans.map((loan, i) => {
@@ -1257,8 +1258,8 @@ function renderLoanRows() {
         <div><label>貸款餘額 (NT$)</label><input type="text" inputmode="numeric" data-field="balance" value="${addCommas(loan.balance || 0)}"></div>
         <div><label>年利率 (%)</label><input type="number" inputmode="decimal" data-field="rate" value="${loan.rate ? +(loan.rate * 100).toFixed(2) : 0}" min="0" step="0.1"></div>
         <div><label>剩餘期數（月）</label><input type="number" inputmode="numeric" data-field="remainingMonths" value="${rm}" min="0" step="1"></div>
-        <div><label>月付額</label><span class="loan-monthly-display">${mpText}</span></div>
         <div><label>寬限期（月）</label><input type="number" inputmode="numeric" data-field="gracePeriodMonths" value="${gp}" min="0" step="1"></div>
+        <div><label>月付額</label><span class="loan-monthly-display">${mpText}</span></div>
         <button type="button" class="loan-remove-btn" title="刪除">&times;</button>
       </div>`;
     }
