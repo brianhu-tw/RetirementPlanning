@@ -796,3 +796,56 @@ test.describe("migrateLoans with grace period", () => {
     expect(result[0].gracePeriodMonths).toBe(36);
   });
 });
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// drag label offset (mobile thumb occlusion)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+test.describe("retireHandleY", () => {
+  test("desktop → handle near top", async ({ page }) => {
+    const call = await fire(page);
+    const y = await call("retireHandleY", 30, 400, false);
+    expect(y).toBe(30 + 28); // top + 28
+  });
+
+  test("mobile → handle near bottom", async ({ page }) => {
+    const call = await fire(page);
+    const y = await call("retireHandleY", 30, 400, true);
+    expect(y).toBe(400 - 22); // bottom - 22
+  });
+
+  test("mobile with different chart size → tracks bottom", async ({ page }) => {
+    const call = await fire(page);
+    const y = await call("retireHandleY", 20, 300, true);
+    expect(y).toBe(300 - 22);
+  });
+});
+
+test.describe("incLabelY", () => {
+  test("not dragging → default position above handle", async ({ page }) => {
+    const call = await fire(page);
+    // incY=200, iph=9, chartTop=30, dragging=false, mob=true
+    const y = await call("incLabelY", 200, 9, 30, false, true);
+    expect(y).toBe(200 - 9 - 26); // 165
+  });
+
+  test("dragging on mobile → lifted further above", async ({ page }) => {
+    const call = await fire(page);
+    const yDrag = await call("incLabelY", 200, 9, 30, true, true);
+    const yNorm = await call("incLabelY", 200, 9, 30, false, true);
+    expect(yDrag).toBeLessThan(yNorm);
+  });
+
+  test("dragging on mobile near top → flips below handle", async ({ page }) => {
+    const call = await fire(page);
+    // incY=50, iph=9, chartTop=40 → lifted would go above chart
+    const y = await call("incLabelY", 50, 9, 40, true, true);
+    expect(y).toBeGreaterThan(50 + 9); // below handle
+  });
+
+  test("dragging on desktop → no offset", async ({ page }) => {
+    const call = await fire(page);
+    const y = await call("incLabelY", 200, 13, 30, true, false);
+    expect(y).toBe(200 - 13 - 26); // 161, same as not dragging
+  });
+});

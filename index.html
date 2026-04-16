@@ -588,6 +588,28 @@
     white-space: nowrap;
     box-sizing: border-box;
   }
+  .shared-banner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.8rem;
+    background: var(--card-hover);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.5rem 1rem;
+    margin-bottom: 1rem;
+    font-size: 0.85rem;
+  }
+  .shared-banner[hidden] { display: none; }
+  .shared-banner button {
+    background: var(--accent);
+    color: #000;
+    border: none;
+    border-radius: 6px;
+    padding: 0.3rem 0.8rem;
+    font-size: 0.8rem;
+    cursor: pointer;
+  }
 </style>
 </head>
 <body>
@@ -599,6 +621,11 @@
   <h1>幾歲能退休？</h1>
   <p>是還要工作多久？假設每年存下的錢都投入大盤，來看看什麼時候能財富自由</p>
 </header>
+
+<div id="shared-banner" class="shared-banner" hidden>
+  <span>正在查看分享的試算</span>
+  <button type="button" onclick="restoreMyData()">回到我的試算</button>
+</div>
 
 <!-- ── Parameter Panel ── -->
 <section>
@@ -778,7 +805,7 @@
 
 <footer>
   <p>此分析僅供參考，不構成投資建議。實際報酬率會波動，當個方向參考就好。</p>
-  <p style="margin-top:0.3rem;">幾歲能退休？ v2.4 &copy; 2026 brianhu-tw</p>
+  <p style="margin-top:0.3rem;">幾歲能退休？ v2.8 &copy; 2026 brianhu-tw</p>
 </footer>
 
 </div>
@@ -1177,12 +1204,18 @@ let loans = [];
 let loanMode = "simple"; // "simple" | "precise"
 const LS_LOANS_KEY = "fire_loans";
 const LS_LOAN_MODE_KEY = "fire_loan_mode";
+let sharedView = false;
+const SHARED_VIEW_PASSTHROUGH = new Set(["fire_sections"]);
+function guardedSetItem(key, value) {
+  if (sharedView && !SHARED_VIEW_PASSTHROUGH.has(key)) return;
+  try { localStorage.setItem(key, value); } catch(e) {}
+}
 
 function saveLoans() {
-  try { localStorage.setItem(LS_LOANS_KEY, JSON.stringify(loans)); } catch(e) {}
+  guardedSetItem(LS_LOANS_KEY, JSON.stringify(loans));
 }
 function saveLoanMode() {
-  try { localStorage.setItem(LS_LOAN_MODE_KEY, loanMode); } catch(e) {}
+  guardedSetItem(LS_LOAN_MODE_KEY, loanMode);
 }
 function restoreLoanMode() {
   try {
@@ -1207,6 +1240,7 @@ function migrateLoans(arr) {
 }
 
 function restoreLoans() {
+  if (sharedView) return;
   const sp = new URLSearchParams(window.location.search);
   const urlLoans = sp.get("loans");
   if (urlLoans) {
@@ -1273,6 +1307,7 @@ function bindLoanEvents() {
     const idx = +row.dataset.index;
 
     row.querySelector(".loan-remove-btn").addEventListener("click", () => {
+      if (!confirm("確定要刪除此貸款？")) return;
       loans.splice(idx, 1);
       renderLoanRows();
       saveLoans();
@@ -1340,12 +1375,11 @@ const LS_KEY = "fire_params";
 function saveParams() {
   const data = {};
   ALL_FIELDS.forEach(id => data[id] = document.getElementById(id).value);
-  try { localStorage.setItem(LS_KEY, JSON.stringify(data)); } catch(e) {}
+  guardedSetItem(LS_KEY, JSON.stringify(data));
 }
 function restoreParams() {
   const sp = new URLSearchParams(window.location.search);
-  const hasURL = ALL_FIELDS.some(id => sp.has(URL_KEYS[id]));
-  if (hasURL) {
+  if (sp.has("shared")) {
     ALL_FIELDS.forEach(id => {
       const v = sp.get(URL_KEYS[id]);
       if (v != null) {
@@ -1361,15 +1395,13 @@ function restoreParams() {
     }
     const urlLoans = sp.get("loans");
     if (urlLoans) {
-      try { loans = JSON.parse(urlLoans); saveLoans(); } catch(e) {}
+      try { loans = migrateLoans(JSON.parse(urlLoans)); } catch(e) {}
     }
     const urlLoanMode = sp.get("loanMode");
     if (urlLoanMode === "simple" || urlLoanMode === "precise") {
       loanMode = urlLoanMode;
-      saveLoanMode();
     }
-    window.history.replaceState({}, "", window.location.pathname);
-    saveParams();
+    sharedView = true;
     return;
   }
   try {
@@ -1396,6 +1428,7 @@ window.shareURL = function() {
     params.set("loans", JSON.stringify(loans));
     params.set("loanMode", loanMode);
   }
+  params.set("shared", "1");
   const url = window.location.origin + window.location.pathname + "?" + params.toString();
   navigator.clipboard.writeText(url).then(() => {
     showToast("已複製連結！");
@@ -1462,11 +1495,38 @@ restoreLoans();
 updateModeToggleUI();
 renderLoanRows();
 syncReturnVisibility();
-if (loans.length > 0) {
-  document.getElementById("loansSection").open = true;
+
+// ── Section collapse state persistence ──
+const LS_SECTIONS_KEY = "fire_sections";
+const SECTION_SELECTORS = { loans: "#loansSection", advanced: "details.advanced", yearly: ".yearly-table-wrap details" };
+function saveSectionStates() {
+  const states = {};
+  for (const [key, sel] of Object.entries(SECTION_SELECTORS)) {
+    const el = document.querySelector(sel);
+    if (el) states[key] = el.open;
+  }
+  guardedSetItem(LS_SECTIONS_KEY, JSON.stringify(states));
 }
-if (+document.getElementById("p_return").value !== 12.5 || +document.getElementById("p_inflation").value !== 3 || +document.getElementById("p_incGrowRate").value !== 0 || +document.getElementById("p_expGrowRate").value !== 0) {
-  document.querySelector("details.advanced").open = true;
+function restoreSectionStates() {
+  let saved;
+  try { const raw = localStorage.getItem(LS_SECTIONS_KEY); if (raw) saved = JSON.parse(raw); } catch(e) {}
+  if (saved) {
+    for (const [key, sel] of Object.entries(SECTION_SELECTORS)) {
+      const el = document.querySelector(sel);
+      if (el && saved[key] != null) el.open = saved[key];
+    }
+  } else {
+    // First visit fallback: heuristic open
+    if (loans.length > 0) document.getElementById("loansSection").open = true;
+    if (+document.getElementById("p_return").value !== 12.5 || +document.getElementById("p_inflation").value !== 3 || +document.getElementById("p_incGrowRate").value !== 0 || +document.getElementById("p_expGrowRate").value !== 0) {
+      document.querySelector("details.advanced").open = true;
+    }
+  }
+}
+restoreSectionStates();
+for (const sel of Object.values(SECTION_SELECTORS)) {
+  const el = document.querySelector(sel);
+  if (el) el.addEventListener("toggle", saveSectionStates);
 }
 
 // ── Add Loan button ──
@@ -1725,7 +1785,8 @@ function c3IsNear(chart, px) { return Math.abs(px - c3AgeToX(chart)) < C3_HIT; }
 function c3RetHandleIsNear(chart, px, py) {
   if (Math.abs(px - c3AgeToX(chart)) >= C3_HIT) return false;
   const mob = window.innerWidth <= 900;
-  const handleY = chart.chartArea.top + (mob ? 20 : 28);
+  const { top, bottom } = chart.chartArea;
+  const handleY = retireHandleY(top, bottom, mob);
   return Math.abs(py - handleY) < (mob ? 30 : 24);
 }
 
@@ -1750,6 +1811,19 @@ function c3GetIncOverride() {
   if (!c3IncHasMoved()) return undefined;
   return { startAge: c3IncAge, amount: c3IncAmount * 1e4 };
 }
+// Handle/label Y helpers — mobile: handle at bottom (thumb-friendly), desktop: handle at top
+function retireHandleY(top, bottom, mob) {
+  return mob ? bottom - 22 : top + 28;
+}
+function incLabelY(incY, iph, chartTop, dragging, mob) {
+  if (dragging && mob) {
+    const lifted = incY - iph - 66;
+    if (lifted >= chartTop - 10) return lifted;
+    return incY + iph + 20;
+  }
+  return incY - iph - 26;
+}
+
 // Pulse animation state for drag handles
 let c3PulseStart = 0;
 const C3_PULSE_DURATION = 4000; // pulse for 4 seconds after render
@@ -1839,14 +1913,16 @@ const dragLinePlugin = {
     ctx.beginPath(); ctx.moveTo(incX + ia1, incY); ctx.lineTo(incX + ia2, incY - ia3); ctx.lineTo(incX + ia2, incY + ia3); ctx.closePath(); ctx.fill();
     ctx.beginPath(); ctx.moveTo(incX, incY - ia4); ctx.lineTo(incX - ia5, incY - ia5); ctx.lineTo(incX + ia5, incY - ia5); ctx.closePath(); ctx.fill();
     ctx.beginPath(); ctx.moveTo(incX, incY + ia4); ctx.lineTo(incX - ia5, incY + ia5); ctx.lineTo(incX + ia5, incY + ia5); ctx.closePath(); ctx.fill();
-    ctx.font = "bold 11px -apple-system, sans-serif"; ctx.textAlign = "center";
+    const incFS = (c3IncDragging && mob) ? "bold 13px -apple-system, sans-serif" : "bold 11px -apple-system, sans-serif";
+    ctx.font = incFS; ctx.textAlign = "center";
     ctx.strokeStyle = "#0f1117"; ctx.lineWidth = mob ? 1 : 3; ctx.lineJoin = "round";
     ctx.fillStyle = "#e4e4e7";
     if (mob) {
-      ctx.strokeText(`${c3IncAge}歲起`, incX, incY - iph - 26);
-      ctx.fillText(`${c3IncAge}歲起`, incX, incY - iph - 26);
-      ctx.strokeText(`年收${c3IncAmount}萬`, incX, incY - iph - 12);
-      ctx.fillText(`年收${c3IncAmount}萬`, incX, incY - iph - 12);
+      const ily = incLabelY(incY, iph, top, c3IncDragging, true);
+      ctx.strokeText(`${c3IncAge}歲起`, incX, ily);
+      ctx.fillText(`${c3IncAge}歲起`, incX, ily);
+      ctx.strokeText(`年收${c3IncAmount}萬`, incX, ily + 14);
+      ctx.fillText(`年收${c3IncAmount}萬`, incX, ily + 14);
     } else {
       ctx.strokeText(`${c3IncAge}歲起 年收${c3IncAmount}萬`, incX, incY - iph - 16);
       ctx.fillText(`${c3IncAge}歲起 年收${c3IncAmount}萬`, incX, incY - iph - 16);
@@ -1860,7 +1936,7 @@ const dragLinePlugin = {
     ctx.beginPath(); ctx.moveTo(lineX, top); ctx.lineTo(lineX, bottom);
     ctx.lineWidth = retActive ? 3 : 2; ctx.strokeStyle = c3Dragging ? "#818cf8" : "#6366f1";
     ctx.setLineDash([6, 4]); ctx.stroke(); ctx.setLineDash([]);
-    const cy = top + (mob ? 20 : 28), pw = mob ? 13 : 18, ph = mob ? 9 : 12, pr = mob ? 5 : 6;
+    const cy = retireHandleY(top, bottom, mob), pw = mob ? 13 : 18, ph = mob ? 9 : 12, pr = mob ? 5 : 6;
     ctx.beginPath(); ctx.roundRect(lineX - pw, cy - ph, pw * 2, ph * 2, pr);
     ctx.fillStyle = c3Dragging ? "#818cf8" : retActive ? "#7c7ff2" : "#6366f1";
     ctx.fill(); ctx.lineWidth = mob ? 1 : 2; ctx.strokeStyle = "#0f1117"; ctx.stroke();
@@ -1871,8 +1947,9 @@ const dragLinePlugin = {
     ctx.font = "bold 12px -apple-system, sans-serif"; ctx.textAlign = "center";
     ctx.strokeStyle = "#0f1117"; ctx.lineWidth = mob ? 1 : 3; ctx.lineJoin = "round";
     ctx.fillStyle = "#e4e4e7";
-    ctx.strokeText(c3RetireAge + " 歲退休", lineX, cy + ph + 16);
-    ctx.fillText(c3RetireAge + " 歲退休", lineX, cy + ph + 16);
+    const rly = mob ? cy - ph - 16 : cy + ph + 16;
+    ctx.strokeText(c3RetireAge + " 歲退休", lineX, rly);
+    ctx.fillText(c3RetireAge + " 歲退休", lineX, rly);
     ctx.restore();
 
     // ── Pulse rings on handles for discoverability ──
@@ -2287,6 +2364,24 @@ document.getElementById("p_etf").addEventListener("change", function() {
 // ── Tooltip: init click + hover handlers from module ──
 Tooltip.init();
 
+// ── Shared view banner ──
+if (sharedView) {
+  document.getElementById("shared-banner").hidden = false;
+}
+window.restoreMyData = function() {
+  sharedView = false;
+  document.getElementById("shared-banner").hidden = true;
+  window.history.replaceState({}, "", window.location.pathname);
+  restoreParams();
+  restoreLoanMode();
+  restoreLoans();
+  updateModeToggleUI();
+  renderLoanRows();
+  syncReturnVisibility();
+  restoreSectionStates();
+  recalculate();
+};
+
 // Initial render
 recalculate();
 
@@ -2299,6 +2394,14 @@ if (window.__TEST__) {
     migrateLoans, escAttr, buildLoanFormula,
     c3Returns, hexAlpha, validateAll, getParams, recalculate,
     currentAge, saveParams, restoreParams, VALIDATIONS, DEFAULTS,
+    retireHandleY, incLabelY,
+    c3RetireHandlePos() {
+      const chart = charts.c3;
+      if (!chart) return { x: 0, y: 0 };
+      const mob = window.innerWidth <= 900;
+      const { top, bottom } = chart.chartArea;
+      return { x: c3AgeToX(chart), y: retireHandleY(top, bottom, mob) };
+    },
     get loans() { return loans; },
     get loanMode() { return loanMode; }
   };

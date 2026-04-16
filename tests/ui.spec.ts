@@ -170,6 +170,64 @@ test.describe("P4: persistence", () => {
     expect(await page.locator("#p_income").inputValue()).toBe("800,000");
   });
 
+  test("collapse state of sections persists across reload", async ({ page }) => {
+    await setup(page);
+    // Open loans section (add a loan so it auto-opens)
+    const loansSection = page.locator("#loansSection");
+    await loansSection.locator("summary").click();
+    await page.waitForTimeout(100);
+    expect(await loansSection.evaluate(el => (el as HTMLDetailsElement).open)).toBe(true);
+    // Open advanced section
+    const advSection = page.locator("details.advanced");
+    await advSection.locator("summary").click();
+    await page.waitForTimeout(100);
+    expect(await advSection.evaluate(el => (el as HTMLDetailsElement).open)).toBe(true);
+    // Now close both
+    await loansSection.locator("summary").click();
+    await page.waitForTimeout(100);
+    await advSection.locator("summary").click();
+    await page.waitForTimeout(100);
+    expect(await loansSection.evaluate(el => (el as HTMLDetailsElement).open)).toBe(false);
+    expect(await advSection.evaluate(el => (el as HTMLDetailsElement).open)).toBe(false);
+    // Reload — should stay closed
+    await page.reload();
+    await page.waitForFunction(() => document.readyState === "complete");
+    await page.waitForTimeout(300);
+    expect(await loansSection.evaluate(el => (el as HTMLDetailsElement).open)).toBe(false);
+    expect(await advSection.evaluate(el => (el as HTMLDetailsElement).open)).toBe(false);
+  });
+
+  test("opened section state persists across reload", async ({ page }) => {
+    await setup(page);
+    // Open both sections
+    const loansSection = page.locator("#loansSection");
+    const advSection = page.locator("details.advanced");
+    await loansSection.locator("summary").click();
+    await page.waitForTimeout(100);
+    await advSection.locator("summary").click();
+    await page.waitForTimeout(100);
+    // Reload — should stay open
+    await page.reload();
+    await page.waitForFunction(() => document.readyState === "complete");
+    await page.waitForTimeout(300);
+    expect(await loansSection.evaluate(el => (el as HTMLDetailsElement).open)).toBe(true);
+    expect(await advSection.evaluate(el => (el as HTMLDetailsElement).open)).toBe(true);
+  });
+
+  test("yearly table collapse state persists across reload", async ({ page }) => {
+    await setup(page);
+    const yearlyDetails = page.locator(".yearly-table-wrap details");
+    // Open it
+    await yearlyDetails.locator("summary").click();
+    await page.waitForTimeout(100);
+    expect(await yearlyDetails.evaluate(el => (el as HTMLDetailsElement).open)).toBe(true);
+    // Reload — should stay open
+    await page.reload();
+    await page.waitForFunction(() => document.readyState === "complete");
+    await page.waitForTimeout(300);
+    expect(await yearlyDetails.evaluate(el => (el as HTMLDetailsElement).open)).toBe(true);
+  });
+
   test("URL params override localStorage", async ({ page }) => {
     // First set localStorage values
     await setup(page);
@@ -178,7 +236,7 @@ test.describe("P4: persistence", () => {
     await page.waitForTimeout(300);
 
     // Now navigate with URL params
-    await page.goto("/?age=45&income=1200000&expenses=400000&return=8&inflation=2&incGrowRate=1");
+    await page.goto("/?age=45&income=1200000&expenses=400000&return=8&inflation=2&incGrowRate=1&shared=1");
     await page.waitForFunction(() => document.readyState === "complete");
 
     expect(await page.locator("#p_age").inputValue()).toBe("45");
@@ -229,11 +287,19 @@ test.describe("P5: loans UI", () => {
     await expect(rows).toHaveCount(1);
   });
 
-  test("delete loan button removes the row", async ({ page }) => {
+  test("delete loan button requires confirmation", async ({ page }) => {
     await setup(page);
     await addLoan(page, "房貸", "8,000,000", "2.1", "240");
     await expect(page.locator(".loan-row")).toHaveCount(1);
+    // Dismiss confirm → loan stays
+    page.once("dialog", d => d.dismiss());
     await page.locator(".loan-row .loan-remove-btn").click();
+    await page.waitForTimeout(200);
+    await expect(page.locator(".loan-row")).toHaveCount(1);
+    // Accept confirm → loan removed
+    page.once("dialog", d => d.accept());
+    await page.locator(".loan-row .loan-remove-btn").click();
+    await page.waitForTimeout(200);
     await expect(page.locator(".loan-row")).toHaveCount(0);
   });
 
@@ -1166,5 +1232,182 @@ test.describe("grace period UI", () => {
     const val = await mp.inputValue();
     // Grace payment = 8,000,000 × 0.021 / 12 = 14,000
     expect(val).toContain("14,000");
+  });
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Shared link protection
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+test.describe("shared link protection", () => {
+  test("URL params do not overwrite localStorage", async ({ page }) => {
+    // Set own values
+    await setup(page);
+    await page.locator("#p_age").fill("35");
+    await page.locator("#p_age").blur();
+    await page.locator("#p_income").fill("1,500,000");
+    await page.locator("#p_income").blur();
+    await page.waitForTimeout(400);
+
+    // Open shared link with different values
+    await page.goto("/?age=45&income=900000&shared=1");
+    await page.waitForFunction(() => document.readyState === "complete");
+
+    // Screen shows URL values
+    expect(await page.locator("#p_age").inputValue()).toBe("45");
+    expect(await page.locator("#p_income").inputValue()).toBe("900,000");
+
+    // localStorage should still have own values (not shared)
+    const saved = await page.evaluate(() => {
+      const raw = localStorage.getItem("fire_params");
+      return raw ? JSON.parse(raw) : null;
+    });
+    expect(saved.p_age).toBe("35");
+    expect(saved.p_income).toBe("1,500,000");
+  });
+
+  test("URL params persist on reload", async ({ page }) => {
+    await page.addInitScript(() => { (window as any).__TEST__ = true; });
+    await page.goto("/?age=45&income=900000&shared=1");
+    await page.waitForFunction(() => (window as any).__FIRE__);
+    expect(page.url()).toContain("shared=1");
+
+    // Reload
+    await page.reload();
+    await page.waitForFunction(() => (window as any).__FIRE__);
+
+    // Still shows shared values
+    expect(await page.locator("#p_age").inputValue()).toBe("45");
+    expect(page.url()).toContain("shared=1");
+  });
+
+  test("editing a field in shared view does NOT save to localStorage", async ({ page }) => {
+    // Save own values first
+    await setup(page);
+    await page.locator("#p_age").fill("28");
+    await page.locator("#p_age").blur();
+    await page.waitForTimeout(400);
+
+    // Open shared link
+    await page.goto("/?age=40&income=800000&shared=1");
+    await page.waitForFunction(() => document.readyState === "complete");
+
+    // Edit a field
+    await page.locator("#p_age").fill("42");
+    await page.locator("#p_age").blur();
+    await page.waitForTimeout(400);
+
+    // localStorage should still have own values (edits were NOT saved)
+    const saved = await page.evaluate(() => {
+      const raw = localStorage.getItem("fire_params");
+      return raw ? JSON.parse(raw) : null;
+    });
+    expect(saved.p_age).toBe("28");
+  });
+
+  test("removing URL params restores localStorage values", async ({ page }) => {
+    // Save own values first
+    await setup(page);
+    await page.locator("#p_age").fill("28");
+    await page.locator("#p_age").blur();
+    await page.waitForTimeout(400);
+
+    // Open shared link
+    await page.goto("/?age=45&income=900000&shared=1");
+    await page.waitForFunction(() => document.readyState === "complete");
+    expect(await page.locator("#p_age").inputValue()).toBe("45");
+
+    // Navigate without URL params → restores own values
+    await page.goto("/");
+    await page.waitForFunction(() => document.readyState === "complete");
+    expect(await page.locator("#p_age").inputValue()).toBe("28");
+  });
+
+  test("shared banner visible when URL params present, hidden otherwise", async ({ page }) => {
+    await setup(page);
+    await expect(page.locator("#shared-banner")).toBeHidden();
+
+    await page.goto("/?age=30&income=600000&shared=1");
+    await page.waitForFunction(() => document.readyState === "complete");
+    await expect(page.locator("#shared-banner")).toBeVisible();
+  });
+
+  test("clicking back-to-my-data clears URL and restores own values", async ({ page }) => {
+    // Save own values
+    await setup(page);
+    await page.locator("#p_age").fill("28");
+    await page.locator("#p_age").blur();
+    await page.waitForTimeout(400);
+
+    // Open shared link
+    await page.goto("/?age=50&income=2000000&shared=1");
+    await page.waitForFunction(() => document.readyState === "complete");
+    expect(await page.locator("#p_age").inputValue()).toBe("50");
+    await expect(page.locator("#shared-banner")).toBeVisible();
+
+    // Click button
+    await page.locator("#shared-banner button").click();
+    await page.waitForTimeout(400);
+
+    // Own values restored, banner gone, URL clean
+    expect(await page.locator("#p_age").inputValue()).toBe("28");
+    await expect(page.locator("#shared-banner")).toBeHidden();
+    expect(page.url()).not.toContain("age=");
+  });
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Mobile drag label offset
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+test.describe("mobile drag label offset", () => {
+  test("mobile touch drag on retirement handle updates summary", async ({ browser }) => {
+    const ctx = await browser.newContext({
+      viewport: { width: 375, height: 812 },
+      hasTouch: true,
+    });
+    const page = await ctx.newPage();
+    await page.addInitScript(() => { (window as any).__TEST__ = true; });
+    await page.goto("/");
+    await page.waitForFunction(() => (window as any).__FIRE__);
+
+    // Scroll chart into view
+    await page.locator("#chart3").scrollIntoViewIfNeeded();
+    await page.waitForTimeout(300);
+
+    // Get initial retirement age from summary
+    const summaryBefore = await page.locator("#c3Summary").textContent();
+
+    // Get handle page coordinates via evaluate (accounts for scroll + canvas offset)
+    const pos = await page.evaluate(() => {
+      const f = (window as any).__FIRE__;
+      const hp = f.c3RetireHandlePos();
+      const canvas = document.getElementById("chart3")!;
+      const rect = canvas.getBoundingClientRect();
+      // hp.x/hp.y are chart pixel coords (same as CSS pixels for ratio=1 in test)
+      return { x: rect.left + hp.x, y: rect.top + hp.y };
+    }) as { x: number; y: number };
+
+    // Dispatch pointer events directly on canvas for reliable touch simulation
+    await page.evaluate(({ startX, startY }) => {
+      const canvas = document.getElementById("chart3")!;
+      const rect = canvas.getBoundingClientRect();
+      const cx = startX - rect.left, cy = startY - rect.top;
+      const opts = (x: number, y: number) => ({
+        bubbles: true, clientX: x, clientY: y, pointerId: 1, pointerType: "touch"
+      });
+      canvas.dispatchEvent(new PointerEvent("pointerdown", opts(startX, startY)));
+      // Move right by 80px in steps
+      for (let i = 1; i <= 8; i++) {
+        canvas.dispatchEvent(new PointerEvent("pointermove", opts(startX + i * 10, startY)));
+      }
+      canvas.dispatchEvent(new PointerEvent("pointerup", opts(startX + 80, startY)));
+    }, { startX: pos.x, startY: pos.y });
+    await page.waitForTimeout(300);
+
+    // Summary should have changed
+    const summaryAfter = await page.locator("#c3Summary").textContent();
+    expect(summaryAfter).not.toBe(summaryBefore);
+    await ctx.close();
   });
 });
