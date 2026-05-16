@@ -86,6 +86,388 @@ test.describe("default value placeholder styling", () => {
   });
 });
 
+// Helper: setup with pre-seeded loans + lastUpdated timestamp.
+// Seeds only on first load (sessionStorage flag) so page.reload() doesn't overwrite changes.
+async function setupWithStaleLoans(page: Page, monthsAgo: number, loanData: any[]) {
+  const ms = monthsAgo * 30 * 24 * 60 * 60 * 1000;
+  const oldISO = new Date(Date.now() - ms).toISOString();
+  await page.addInitScript(([loans, ts]) => {
+    (window as any).__TEST__ = true;
+    if (!sessionStorage.getItem("_seeded")) {
+      localStorage.setItem("fire_loans", JSON.stringify(loans));
+      localStorage.setItem("fire_loan_mode", "simple");
+      localStorage.setItem("fire_loans_last_updated", ts);
+      sessionStorage.setItem("_seeded", "1");
+    }
+  }, [loanData, oldISO] as [any, string]);
+  await page.goto("/");
+  await page.waitForFunction(() => (window as any).__FIRE__);
+}
+
+test.describe("loan staleness banner", () => {
+  test("banner hidden when there are no loans", async ({ page }) => {
+    await setup(page);
+    await ensureLoanSectionOpen(page);
+    await expect(page.locator("#loanStaleBanner")).toBeHidden();
+  });
+
+  test("banner hidden right after adding a first loan (timestamp = now)", async ({ page }) => {
+    await setup(page);
+    await addLoanSimple(page, "房貸", "40,000", "240");
+    await expect(page.locator("#loanStaleBanner")).toBeHidden();
+  });
+
+  test("banner hidden when loans exist but lastUpdated is recent (<1 month)", async ({ page }) => {
+    await setupWithStaleLoans(page, 0, [
+      { name: "房貸", monthlyPayment: 40000, balance: 0, rate: 0, remainingMonths: 240 }
+    ]);
+    await ensureLoanSectionOpen(page);
+    await expect(page.locator("#loanStaleBanner")).toBeHidden();
+  });
+
+  test("banner shown when lastUpdated is 3+ months ago", async ({ page }) => {
+    await setupWithStaleLoans(page, 3, [
+      { name: "房貸", monthlyPayment: 40000, balance: 0, rate: 0, remainingMonths: 240 }
+    ]);
+    await ensureLoanSectionOpen(page);
+    await expect(page.locator("#loanStaleBanner")).toBeVisible();
+    expect(await page.locator("#loanStaleN").inputValue()).toBe("3");
+  });
+
+  test("clicking 套用 X 期 advances all loans by X and hides banner", async ({ page }) => {
+    await setupWithStaleLoans(page, 3, [
+      { name: "房貸", monthlyPayment: 40000, balance: 0, rate: 0, remainingMonths: 240 }
+    ]);
+    await ensureLoanSectionOpen(page);
+    await page.locator("#loanStaleBannerApply").click();
+    await page.waitForTimeout(300);
+    // 3 months advanced → 240 - 3 = 237
+    const rm = await page.locator('.loan-row input[data-field="remainingMonths"]').inputValue();
+    expect(rm).toBe("237");
+    await expect(page.locator("#loanStaleBanner")).toBeHidden();
+  });
+
+  test("更新 also shows toast", async ({ page }) => {
+    await setupWithStaleLoans(page, 2, [
+      { name: "房貸", monthlyPayment: 40000, balance: 0, rate: 0, remainingMonths: 240 }
+    ]);
+    await ensureLoanSectionOpen(page);
+    await page.locator("#loanStaleBannerApply").click();
+    const toast = page.locator("#toast");
+    await expect(toast).toBeVisible();
+    await expect(toast).toContainText("更新");
+  });
+
+  test("clicking 我自己改 dismisses banner without changing loans", async ({ page }) => {
+    await setupWithStaleLoans(page, 3, [
+      { name: "房貸", monthlyPayment: 40000, balance: 0, rate: 0, remainingMonths: 240 }
+    ]);
+    await ensureLoanSectionOpen(page);
+    await page.locator("#loanStaleBannerDismiss").click();
+    await page.waitForTimeout(200);
+    await expect(page.locator("#loanStaleBanner")).toBeHidden();
+    // Loan unchanged
+    const rm = await page.locator('.loan-row input[data-field="remainingMonths"]').inputValue();
+    expect(rm).toBe("240");
+  });
+
+  test("editing a loan field updates timestamp (banner stays hidden afterwards)", async ({ page }) => {
+    await setup(page);
+    await addLoanSimple(page, "房貸", "40,000", "240");
+    // Edit field → should update timestamp (which is already now, so still fresh)
+    await page.locator('.loan-row input[data-field="monthlyPayment"]').fill("50,000");
+    await page.locator('.loan-row input[data-field="monthlyPayment"]').blur();
+    await page.waitForTimeout(300);
+    // Verify timestamp was updated to a recent value
+    const ts = await page.evaluate(() => localStorage.getItem("fire_loans_last_updated"));
+    expect(ts).toBeTruthy();
+    const diff = Date.now() - new Date(ts!).getTime();
+    expect(diff).toBeLessThan(10_000); // within 10s of now
+  });
+
+  test("apply 套用 updates timestamp so banner won't reappear on reload", async ({ page }) => {
+    await setupWithStaleLoans(page, 3, [
+      { name: "房貸", monthlyPayment: 40000, balance: 0, rate: 0, remainingMonths: 240 }
+    ]);
+    await ensureLoanSectionOpen(page);
+    await page.locator("#loanStaleBannerApply").click();
+    await page.waitForTimeout(300);
+    await page.reload();
+    await page.waitForFunction(() => (window as any).__FIRE__);
+    await ensureLoanSectionOpen(page);
+    await expect(page.locator("#loanStaleBanner")).toBeHidden();
+  });
+
+  test("banner has editable N input pre-filled with elapsed months", async ({ page }) => {
+    await setupWithStaleLoans(page, 4, [
+      { name: "房貸", monthlyPayment: 40000, balance: 0, rate: 0, remainingMonths: 240 }
+    ]);
+    await ensureLoanSectionOpen(page);
+    const n = page.locator("#loanStaleN");
+    await expect(n).toBeVisible();
+    expect(await n.inputValue()).toBe("4");
+  });
+
+  test("editing N then 套用 uses the edited value (not the original elapsed)", async ({ page }) => {
+    await setupWithStaleLoans(page, 5, [
+      { name: "房貸", monthlyPayment: 40000, balance: 0, rate: 0, remainingMonths: 240 }
+    ]);
+    await ensureLoanSectionOpen(page);
+    await page.locator("#loanStaleN").fill("2");
+    await page.locator("#loanStaleBannerApply").click();
+    await page.waitForTimeout(300);
+    // Only 2 期 applied → 240 - 2 = 238
+    const rm = await page.locator('.loan-row input[data-field="remainingMonths"]').inputValue();
+    expect(rm).toBe("238");
+  });
+
+  test("N=0 in input → 套用 is a no-op (banner stays, loans unchanged)", async ({ page }) => {
+    await setupWithStaleLoans(page, 3, [
+      { name: "房貸", monthlyPayment: 40000, balance: 0, rate: 0, remainingMonths: 240 }
+    ]);
+    await ensureLoanSectionOpen(page);
+    await page.locator("#loanStaleN").fill("0");
+    await page.locator("#loanStaleBannerApply").click();
+    await page.waitForTimeout(300);
+    const rm = await page.locator('.loan-row input[data-field="remainingMonths"]').inputValue();
+    expect(rm).toBe("240");
+  });
+
+  test("N input rejects negative numbers (sanitized to non-negative)", async ({ page }) => {
+    await setupWithStaleLoans(page, 3, [
+      { name: "房貸", monthlyPayment: 40000, balance: 0, rate: 0, remainingMonths: 240 }
+    ]);
+    await ensureLoanSectionOpen(page);
+    await page.locator("#loanStaleN").fill("-5");
+    await page.waitForTimeout(100);
+    const v = await page.locator("#loanStaleN").inputValue();
+    const n = parseInt(v || "0", 10);
+    expect(n).toBeGreaterThanOrEqual(0);
+  });
+
+  test("N input rejects decimals (sanitized to integer)", async ({ page }) => {
+    await setupWithStaleLoans(page, 3, [
+      { name: "房貸", monthlyPayment: 40000, balance: 0, rate: 0, remainingMonths: 240 }
+    ]);
+    await ensureLoanSectionOpen(page);
+    await page.locator("#loanStaleN").fill("2.5");
+    await page.waitForTimeout(100);
+    const v = await page.locator("#loanStaleN").inputValue();
+    expect(v).not.toContain(".");
+  });
+
+  test("dismiss 我自己改 updates timestamp so banner won't reappear on reload", async ({ page }) => {
+    await setupWithStaleLoans(page, 3, [
+      { name: "房貸", monthlyPayment: 40000, balance: 0, rate: 0, remainingMonths: 240 }
+    ]);
+    await ensureLoanSectionOpen(page);
+    await page.locator("#loanStaleBannerDismiss").click();
+    await page.waitForTimeout(200);
+    await page.reload();
+    await page.waitForFunction(() => (window as any).__FIRE__);
+    await ensureLoanSectionOpen(page);
+    await expect(page.locator("#loanStaleBanner")).toBeHidden();
+  });
+
+  // ── #1: multi-loan batch apply ──
+  test("更新 advances all 3 loans by N (simple + precise + grace mix)", async ({ page }) => {
+    await setupWithStaleLoans(page, 2, [
+      { name: "信貸", monthlyPayment: 10_000, balance: 0, rate: 0, remainingMonths: 60 },
+      { name: "房貸", monthlyPayment: 0, balance: 4_800_000, rate: 0, remainingMonths: 240, gracePeriodMonths: 0 },
+      { name: "車貸", monthlyPayment: 0, balance: 1_000_000, rate: 0, remainingMonths: 36, gracePeriodMonths: 12 },
+    ]);
+    // Switch to precise to see all three rows render with their precise fields
+    await ensureLoanSectionOpen(page);
+    await switchLoanMode(page, "precise");
+    await page.locator("#loanStaleN").fill("2");
+    await page.locator("#loanStaleBannerApply").click();
+    await page.waitForTimeout(300);
+    const rms = await page.locator('.loan-row input[data-field="remainingMonths"]').evaluateAll(els => (els as HTMLInputElement[]).map(el => el.value));
+    expect(rms).toEqual(["58", "238", "34"]);
+    // 信貸 (simple fallback): balance stays 0
+    // 房貸 (no grace): balance decreased by 2*20k = 40k → 4,760,000
+    // 車貸 (grace=12): grace consumes both months → balance unchanged, grace 10
+    const graces = await page.locator('.loan-row input[data-field="gracePeriodMonths"]').evaluateAll(els => (els as HTMLInputElement[]).map(el => el.value));
+    expect(graces[2]).toBe("10");
+  });
+
+  // ── #2: sharedView banner stays hidden ──
+  test("sharedView mode keeps banner hidden even with stale timestamp", async ({ page }) => {
+    const loans = [{ name: "房貸", monthlyPayment: 40000, balance: 0, rate: 0, remainingMonths: 240 }];
+    const url = `/?shared=1&age=22&loans=${encodeURIComponent(JSON.stringify(loans))}&loanMode=simple`;
+    await page.addInitScript(() => {
+      (window as any).__TEST__ = true;
+      if (!sessionStorage.getItem("_seeded")) {
+        const ts = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+        localStorage.setItem("fire_loans_last_updated", ts);
+        sessionStorage.setItem("_seeded", "1");
+      }
+    });
+    await page.goto(url);
+    await page.waitForFunction(() => (window as any).__FIRE__);
+    await ensureLoanSectionOpen(page);
+    await expect(page.locator("#loanStaleBanner")).toBeHidden();
+  });
+
+  // ── #3: removing a loan updates timestamp ──
+  test("removing a loan updates the timestamp", async ({ page }) => {
+    await setup(page);
+    await addLoanSimple(page, "房貸", "40,000", "240");
+    // Pretend timestamp is old
+    await page.evaluate(() => {
+      const old = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+      localStorage.setItem("fire_loans_last_updated", old);
+    });
+    // Accept the confirm() for delete
+    page.on("dialog", d => d.accept());
+    await page.locator(".loan-remove-btn").first().click();
+    await page.waitForTimeout(300);
+    const ts = await page.evaluate(() => localStorage.getItem("fire_loans_last_updated"));
+    expect(ts).toBeTruthy();
+    const diff = Date.now() - new Date(ts!).getTime();
+    expect(diff).toBeLessThan(10_000);
+  });
+
+  // ── #4: reset button clears timestamp and hides banner ──
+  test("重設為預設值 clears lastUpdated timestamp and hides banner", async ({ page }) => {
+    await setupWithStaleLoans(page, 3, [
+      { name: "房貸", monthlyPayment: 40000, balance: 0, rate: 0, remainingMonths: 240 }
+    ]);
+    await ensureLoanSectionOpen(page);
+    await expect(page.locator("#loanStaleBanner")).toBeVisible();
+    page.on("dialog", d => d.accept());
+    await page.locator("#resetBtn").click();
+    await page.waitForTimeout(400);
+    const ts = await page.evaluate(() => localStorage.getItem("fire_loans_last_updated"));
+    expect(ts).toBeNull();
+    await expect(page.locator("#loanStaleBanner")).toBeHidden();
+  });
+
+  // ── #5: N > 120 clamps to 120 ──
+  test("N > 120 in input is clamped to 120", async ({ page }) => {
+    await setupWithStaleLoans(page, 3, [
+      { name: "房貸", monthlyPayment: 40000, balance: 0, rate: 0, remainingMonths: 240 }
+    ]);
+    await ensureLoanSectionOpen(page);
+    await page.locator("#loanStaleN").fill("200");
+    await page.waitForTimeout(100);
+    expect(await page.locator("#loanStaleN").inputValue()).toBe("120");
+  });
+
+  // ── #7: banner appears above the loan list in DOM ──
+  test("banner sits above #loanList in DOM order", async ({ page }) => {
+    await setupWithStaleLoans(page, 3, [
+      { name: "房貸", monthlyPayment: 40000, balance: 0, rate: 0, remainingMonths: 240 }
+    ]);
+    await ensureLoanSectionOpen(page);
+    const bannerFollowedByList = await page.evaluate(() => {
+      const banner = document.getElementById("loanStaleBanner");
+      const list = document.getElementById("loanList");
+      if (!banner || !list) return false;
+      // Node.DOCUMENT_POSITION_FOLLOWING = 4
+      return (banner.compareDocumentPosition(list) & 4) !== 0;
+    });
+    expect(bannerFollowedByList).toBe(true);
+  });
+
+  // ── #8: banner descriptive text ──
+  test("banner descriptive text uses '上次更新：' wording", async ({ page }) => {
+    await setupWithStaleLoans(page, 3, [
+      { name: "房貸", monthlyPayment: 40000, balance: 0, rate: 0, remainingMonths: 240 }
+    ]);
+    await ensureLoanSectionOpen(page);
+    await expect(page.locator(".loan-stale-text")).toContainText("上次更新");
+    await expect(page.locator(".loan-stale-text")).toContainText("個月前");
+  });
+
+  // ── #9: button labels ──
+  test("button labels are '更新' and '取消'", async ({ page }) => {
+    await setupWithStaleLoans(page, 3, [
+      { name: "房貸", monthlyPayment: 40000, balance: 0, rate: 0, remainingMonths: 240 }
+    ]);
+    await ensureLoanSectionOpen(page);
+    expect((await page.locator("#loanStaleBannerApply").textContent())?.trim()).toBe("更新");
+    expect((await page.locator("#loanStaleBannerDismiss").textContent())?.trim()).toBe("取消");
+  });
+
+  // ── #10: editing a loan field updates timestamp to ~now ──
+  test("editing balance updates timestamp to within seconds of now", async ({ page }) => {
+    await setupWithStaleLoans(page, 3, [
+      { name: "房貸", monthlyPayment: 0, balance: 4_800_000, rate: 0, remainingMonths: 240, gracePeriodMonths: 0 }
+    ]);
+    await ensureLoanSectionOpen(page);
+    await switchLoanMode(page, "precise");
+    await page.locator('.loan-row input[data-field="balance"]').fill("3,000,000");
+    await page.locator('.loan-row input[data-field="balance"]').blur();
+    await page.waitForTimeout(300);
+    const ts = await page.evaluate(() => localStorage.getItem("fire_loans_last_updated"));
+    expect(ts).toBeTruthy();
+    const diff = Date.now() - new Date(ts!).getTime();
+    expect(diff).toBeLessThan(10_000);
+  });
+
+  // ── #11: boundary at 30 days ──
+  test("29 days ago → banner hidden (under 1 month threshold)", async ({ page }) => {
+    await setupWithStaleLoans(page, 29 / 30, [
+      { name: "房貸", monthlyPayment: 40000, balance: 0, rate: 0, remainingMonths: 240 }
+    ]);
+    await ensureLoanSectionOpen(page);
+    await expect(page.locator("#loanStaleBanner")).toBeHidden();
+  });
+
+  test("exactly 30 days ago → banner visible (≥1 month)", async ({ page }) => {
+    await setupWithStaleLoans(page, 1, [
+      { name: "房貸", monthlyPayment: 40000, balance: 0, rate: 0, remainingMonths: 240 }
+    ]);
+    await ensureLoanSectionOpen(page);
+    await expect(page.locator("#loanStaleBanner")).toBeVisible();
+  });
+
+  // ── #12: dismiss, time advances, banner reappears ──
+  test("after dismiss, 31 more days pass → banner reappears", async ({ page }) => {
+    await setupWithStaleLoans(page, 3, [
+      { name: "房貸", monthlyPayment: 40000, balance: 0, rate: 0, remainingMonths: 240 }
+    ]);
+    await ensureLoanSectionOpen(page);
+    await page.locator("#loanStaleBannerDismiss").click();
+    await page.waitForTimeout(200);
+    await expect(page.locator("#loanStaleBanner")).toBeHidden();
+    // Now simulate time passing
+    await page.evaluate(() => {
+      const ts = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000).toISOString();
+      localStorage.setItem("fire_loans_last_updated", ts);
+    });
+    await page.reload();
+    await page.waitForFunction(() => (window as any).__FIRE__);
+    await ensureLoanSectionOpen(page);
+    await expect(page.locator("#loanStaleBanner")).toBeVisible();
+    expect(await page.locator("#loanStaleN").inputValue()).toBe("1");
+  });
+});
+
+// ── #6: loan input font-size sanity ──
+test.describe("loan input font-size", () => {
+  test("loan inputs are smaller (0.9rem) than main param inputs (1rem)", async ({ page }) => {
+    await setup(page);
+    await addLoanSimple(page, "房貸", "40,000", "240");
+    const loanFontSize = await page.locator('.loan-row input[data-field="monthlyPayment"]').evaluate(el => parseFloat(getComputedStyle(el).fontSize));
+    const mainFontSize = await page.locator("#p_age").evaluate(el => parseFloat(getComputedStyle(el).fontSize));
+    expect(loanFontSize).toBeLessThan(mainFontSize);
+    // 0.9rem ≈ 14.4px at default 16px root
+    expect(loanFontSize).toBeCloseTo(14.4, 1);
+  });
+
+  test("ETF select font-size is 0.9rem (smaller than numeric input 1rem)", async ({ page }) => {
+    await setup(page);
+    // Open advanced section to ensure #p_etf is visible
+    await page.locator("details.advanced summary").click();
+    const selectFontSize = await page.locator("#p_etf").evaluate(el => parseFloat(getComputedStyle(el).fontSize));
+    const inputFontSize = await page.locator("#p_age").evaluate(el => parseFloat(getComputedStyle(el).fontSize));
+    expect(selectFontSize).toBeLessThan(inputFontSize);
+    expect(selectFontSize).toBeCloseTo(14.4, 1);
+  });
+});
+
 test.describe("loan field default value placeholder styling", () => {
   test("new precise loan has placeholder-style on all default numeric fields", async ({ page }) => {
     await setup(page);
@@ -1499,8 +1881,8 @@ test.describe("mobile info-tip tooltips", () => {
     await page.waitForTimeout(200);
     const wasOpen = await page.locator("#loansSection").evaluate(el => (el as HTMLDetailsElement).open);
     expect(wasOpen).toBe(true);
-    // First tap on loans info-tip
-    const tip = page.locator("#loansSection .info-tip");
+    // First tap on loans summary info-tip (the one in the section header)
+    const tip = page.locator("#loansSection summary .info-tip");
     await tip.tap();
     await page.waitForTimeout(200);
     await expect(page.locator(".tip-bubble")).toBeVisible();

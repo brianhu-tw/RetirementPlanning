@@ -809,6 +809,93 @@ test.describe("buildLoanFormula with grace period", () => {
   });
 });
 
+test.describe("advanceLoanByMonths", () => {
+  test("N=0 → loan unchanged", async ({ page }) => {
+    const call = await fire(page);
+    const loan = { balance: 5_000_000, rate: 0.02, remainingMonths: 240, gracePeriodMonths: 0, monthlyPayment: 0 };
+    const r = await call("advanceLoanByMonths", loan, 0) as any;
+    expect(r.balance).toBe(5_000_000);
+    expect(r.remainingMonths).toBe(240);
+    expect(r.gracePeriodMonths).toBe(0);
+  });
+
+  test("simple mode: only remainingMonths decreases", async ({ page }) => {
+    const call = await fire(page);
+    const loan = { monthlyPayment: 40_000, balance: 0, rate: 0, remainingMonths: 240, gracePeriodMonths: 0 };
+    const r = await call("advanceLoanByMonths", loan, 3) as any;
+    expect(r.remainingMonths).toBe(237);
+    expect(r.monthlyPayment).toBe(40_000);
+    expect(r.balance).toBe(0);
+  });
+
+  test("precise mode no grace: balance reduced by principal, remainingMonths decreases", async ({ page }) => {
+    const call = await fire(page);
+    // 0% rate, 240 months, 4.8M balance → monthly = 20,000 (all principal)
+    const loan = { balance: 4_800_000, rate: 0, remainingMonths: 240, gracePeriodMonths: 0 };
+    const r = await call("advanceLoanByMonths", loan, 12) as any;
+    const amortPmt = Math.round(4_800_000 / 240);
+    expect(r.balance).toBeCloseTo(4_800_000 - amortPmt * 12, -2);
+    expect(r.remainingMonths).toBe(228);
+    expect(r.gracePeriodMonths).toBe(0);
+  });
+
+  test("precise mode with grace: grace consumed, balance unchanged", async ({ page }) => {
+    const call = await fire(page);
+    const loan = { balance: 6_000_000, rate: 0.02, remainingMonths: 240, gracePeriodMonths: 36 };
+    const r = await call("advanceLoanByMonths", loan, 6) as any;
+    expect(r.balance).toBe(6_000_000); // grace = no balance change
+    expect(r.gracePeriodMonths).toBe(30);
+    expect(r.remainingMonths).toBe(234);
+  });
+
+  test("precise mode crossing grace boundary: grace then amortize", async ({ page }) => {
+    const call = await fire(page);
+    const loan = { balance: 4_800_000, rate: 0, remainingMonths: 240, gracePeriodMonths: 6 };
+    const r = await call("advanceLoanByMonths", loan, 12) as any;
+    // 6 grace + 6 amortize at calcMonthlyPayment(4.8M, 0, 234/12) = round(4.8M/234)
+    const amortPmt = Math.round(4_800_000 / 234);
+    expect(r.balance).toBeCloseTo(4_800_000 - amortPmt * 6, -2);
+    expect(r.remainingMonths).toBe(228);
+    expect(r.gracePeriodMonths).toBe(0);
+  });
+
+  test("precise fallback (balance=0, monthlyPayment>0): only remainingMonths decreases", async ({ page }) => {
+    const call = await fire(page);
+    const loan = { monthlyPayment: 40_000, balance: 0, rate: 0, remainingMonths: 240, gracePeriodMonths: 0 };
+    const r = await call("advanceLoanByMonths", loan, 5) as any;
+    expect(r.remainingMonths).toBe(235);
+    expect(r.balance).toBe(0);
+    expect(r.monthlyPayment).toBe(40_000);
+  });
+
+  test("N >= remainingMonths → loan ends (balance=0, remaining=0)", async ({ page }) => {
+    const call = await fire(page);
+    const loan = { balance: 100_000, rate: 0, remainingMonths: 5, gracePeriodMonths: 0 };
+    const r = await call("advanceLoanByMonths", loan, 10) as any;
+    expect(r.remainingMonths).toBe(0);
+    expect(r.balance).toBe(0);
+  });
+
+  test("preserves unrelated fields (name, _touched)", async ({ page }) => {
+    const call = await fire(page);
+    const loan = {
+      name: "信貸", balance: 600_000, rate: 0, remainingMonths: 60,
+      gracePeriodMonths: 0, _touched: ["balance", "rate", "remainingMonths"]
+    };
+    const r = await call("advanceLoanByMonths", loan, 3) as any;
+    expect(r.name).toBe("信貸");
+    expect(r._touched).toEqual(["balance", "rate", "remainingMonths"]);
+  });
+
+  test("N < 0 → loan unchanged (no rollback support)", async ({ page }) => {
+    const call = await fire(page);
+    const loan = { balance: 1_000_000, rate: 0, remainingMonths: 100, gracePeriodMonths: 0 };
+    const r = await call("advanceLoanByMonths", loan, -2) as any;
+    expect(r.balance).toBe(1_000_000);
+    expect(r.remainingMonths).toBe(100);
+  });
+});
+
 test.describe("buildLoanFormula empty name fallback", () => {
   test("uses '未命名貸款' when loan.name is empty", async ({ page }) => {
     const call = await fire(page);
