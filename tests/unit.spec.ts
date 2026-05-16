@@ -330,6 +330,35 @@ test.describe("calcYearLoanPayment", () => {
   });
 });
 
+test.describe("calcYearLoanPayment precise fallback to monthlyPayment", () => {
+  test("balance=0 + monthlyPayment>0 → uses monthlyPayment (simple→precise switch)", async ({ page }) => {
+    const call = await fire(page);
+    const loans = [{ name: "房貸", monthlyPayment: 40_000, balance: 0, rate: 0, remainingMonths: 240 }];
+    expect(await call("calcYearLoanPayment", loans, 0, "precise")).toBe(40_000 * 12);
+  });
+
+  test("balance=0 + monthlyPayment=0 → 0", async ({ page }) => {
+    const call = await fire(page);
+    const loans = [{ balance: 0, rate: 0, remainingMonths: 240, monthlyPayment: 0 }];
+    expect(await call("calcYearLoanPayment", loans, 0, "precise")).toBe(0);
+  });
+
+  test("balance>0 ignores monthlyPayment (balance/rate wins)", async ({ page }) => {
+    const call = await fire(page);
+    const loans = [{ balance: 4_800_000, rate: 0, remainingMonths: 240, monthlyPayment: 99_999 }];
+    // Computed from balance: 4_800_000/240 = 20_000 monthly
+    expect(await call("calcYearLoanPayment", loans, 0, "precise")).toBe(20_000 * 12);
+  });
+
+  test("balance=0 + monthlyPayment>0 expires at remainingMonths boundary", async ({ page }) => {
+    const call = await fire(page);
+    // 6 months remaining, monthlyPayment 10000 → year 0 = 60k, year 1 = 0
+    const loans = [{ monthlyPayment: 10_000, balance: 0, rate: 0, remainingMonths: 6 }];
+    expect(await call("calcYearLoanPayment", loans, 0, "precise")).toBe(60_000);
+    expect(await call("calcYearLoanPayment", loans, 1, "precise")).toBe(0);
+  });
+});
+
 // ─── simulate with loans ───
 test.describe("simulate with loans", () => {
   test("loans reduce portfolio compared to no-loans", async ({ page }) => {
@@ -780,22 +809,30 @@ test.describe("buildLoanFormula with grace period", () => {
   });
 });
 
-// ─── migrateLoans with grace period ───
-test.describe("migrateLoans with grace period", () => {
-  test("舊資料無 gracePeriodMonths → 補 0", async ({ page }) => {
+test.describe("buildLoanFormula empty name fallback", () => {
+  test("uses '未命名貸款' when loan.name is empty", async ({ page }) => {
     const call = await fire(page);
-    const old = [{ name: "房貸", balance: 8_000_000, rate: 0.021, remainingMonths: 360 }];
-    const result = await call("migrateLoans", old) as any[];
-    expect(result[0].gracePeriodMonths).toBe(0);
+    const loans = [{ name: "", monthlyPayment: 40000, balance: 0, rate: 0, remainingMonths: 240, gracePeriodMonths: 0 }];
+    const result = await call("buildLoanFormula", loans, 0, "simple") as string;
+    expect(result).toContain("未命名貸款");
   });
 
-  test("已有 gracePeriodMonths 的資料不被覆蓋", async ({ page }) => {
+  test("uses '未命名貸款' when loan.name is missing entirely", async ({ page }) => {
     const call = await fire(page);
-    const data = [{ name: "房貸", balance: 8_000_000, rate: 0.021, remainingMonths: 360, gracePeriodMonths: 36 }];
-    const result = await call("migrateLoans", data) as any[];
-    expect(result[0].gracePeriodMonths).toBe(36);
+    const loans = [{ monthlyPayment: 40000, balance: 0, rate: 0, remainingMonths: 240 }];
+    const result = await call("buildLoanFormula", loans, 0, "simple") as string;
+    expect(result).toContain("未命名貸款");
+  });
+
+  test("uses real name when provided (no fallback)", async ({ page }) => {
+    const call = await fire(page);
+    const loans = [{ name: "房貸", monthlyPayment: 40000, balance: 0, rate: 0, remainingMonths: 240 }];
+    const result = await call("buildLoanFormula", loans, 0, "simple") as string;
+    expect(result).toContain("房貸");
+    expect(result).not.toContain("未命名貸款");
   });
 });
+
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // drag label offset (mobile thumb occlusion)
@@ -808,16 +845,16 @@ test.describe("retireHandleY", () => {
     expect(y).toBe(30 + 28); // top + 28
   });
 
-  test("mobile → handle near bottom", async ({ page }) => {
+  test("mobile → handle near top (same as desktop)", async ({ page }) => {
     const call = await fire(page);
     const y = await call("retireHandleY", 30, 400, true);
-    expect(y).toBe(400 - 22); // bottom - 22
+    expect(y).toBe(30 + 28); // top + 28
   });
 
-  test("mobile with different chart size → tracks bottom", async ({ page }) => {
+  test("mobile with different chart size → tracks top", async ({ page }) => {
     const call = await fire(page);
     const y = await call("retireHandleY", 20, 300, true);
-    expect(y).toBe(300 - 22);
+    expect(y).toBe(20 + 28);
   });
 });
 

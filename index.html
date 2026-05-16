@@ -52,7 +52,7 @@
   "@context": "https://schema.org",
   "@type": "FAQPage",
   "mainEntity": [
-    { "@type": "Question", "name": "什麼是 FIRE 與 25 倍法則？", "acceptedAnswer": { "@type": "Answer", "text": "FIRE（Financial Independence, Retire Early）社群常用的經驗法則：當你的資產達到年支出的 25 倍，每年提領 4% 就能覆蓋生活費，理論上資產不會耗盡。" }},
+    { "@type": "Question", "name": "什麼是 FIRE 與 25 倍法則？", "acceptedAnswer": { "@type": "Answer", "text": "FIRE（Financial Independence, Retire Early）社群常用的經驗法則：當你的資產達到年支出的 25 倍，每年提領 4% 就能覆蓋生活費，理論上資產不會耗盡。本站的「財務自由倍數」會把當年貸款還款計入分母，因此貸款還在時倍數會偏低，還清後會自動上升。" }},
     { "@type": "Question", "name": "退休後資產為什麼會加速縮水？", "acceptedAnswer": { "@type": "Answer", "text": "退休後只出不進，加上通膨持續侵蝕，資產會以更快的速度減少。" }},
     { "@type": "Question", "name": "圖表上的金額是什麼意思？", "acceptedAnswer": { "@type": "Answer", "text": "圖表顯示的是扣除通膨影響後的「實質」購買力。例如 30 年後帳面上的 1,000 萬，以今天的購買力來看可能只值 400 多萬，圖表顯示的就是那個 400 多萬。" }},
     { "@type": "Question", "name": "悲觀、基準、樂觀三條線是什麼？", "acceptedAnswer": { "@type": "Answer", "text": "三條線分別是你設定的報酬率 ±2%。例如設 7%，就會看到 5%、7%、9% 三種情境，幫你感受報酬率波動的影響。" }},
@@ -512,6 +512,7 @@
     gap: 0.4rem;
     align-items: center;
   }
+  .loan-row > div { min-width: 0; }
   .loan-header { margin-bottom: 0.2rem; }
   .loan-header span {
     font-size: 0.72rem;
@@ -519,7 +520,8 @@
   }
   .loan-row { margin-bottom: 0.4rem; }
   .loan-header.simple,  .loan-row.simple  { grid-template-columns: 5fr 5fr 3fr 1.2rem; }
-  .loan-header.precise, .loan-row.precise { grid-template-columns: 4fr 5fr 2.5fr 2.5fr 2.5fr 5fr 1.2rem; }
+  .loan-header.simple.no-name, .loan-row.simple.no-name { grid-template-columns: 5fr 3fr 1.2rem; }
+  .loan-header.precise, .loan-row.precise { grid-template-columns: 4fr 4fr 2fr 2.5fr 2fr 3fr 1.2rem; }
   .loan-row label { display: none; }
   @media (max-width: 600px) {
     .loan-header { display: none; }
@@ -532,22 +534,26 @@
       border-bottom: 1px solid var(--border);
     }
     .loan-row.precise {
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: repeat(6, 1fr);
       position: relative;
       padding-bottom: 0.6rem;
       margin-bottom: 0.6rem;
       border-bottom: 1px solid var(--border);
     }
     .loan-row:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
-    .loan-row > div:first-child { grid-column: 1 / -1; }
-    .loan-row.precise > div:last-of-type { grid-column: 1 / -1; }
+    .loan-row.simple > div:first-child { grid-column: 1 / -1; }
+    .loan-row.precise .loan-cell-name { grid-column: span 6; }
+    .loan-row.precise .loan-cell-balance { grid-column: span 6; }
+    .loan-row.precise .loan-cell-rate { grid-column: span 2; }
+    .loan-row.precise .loan-cell-remaining { grid-column: span 2; }
+    .loan-row.precise .loan-cell-grace { grid-column: span 2; }
+    .loan-row.precise .loan-cell-monthly { grid-column: 1 / -1; }
     .loan-row .loan-remove-btn {
       position: absolute;
       top: 0;
       right: 0;
       justify-self: auto;
     }
-    .loan-row .loan-monthly-display { grid-column: auto; }
   }
   .loan-row input {
     width: 100%;
@@ -563,6 +569,16 @@
     box-sizing: border-box;
   }
   .loan-row input:focus { border-color: var(--accent); }
+  .loan-row input::placeholder {
+    font-style: italic;
+    color: var(--text-muted);
+    opacity: 0.7;
+  }
+  input.placeholder-style {
+    font-style: italic;
+    color: var(--text-muted);
+    opacity: 0.7;
+  }
   .loan-remove-btn {
     background: none;
     border: none;
@@ -576,18 +592,21 @@
   }
   .loan-remove-btn:hover { color: var(--red); }
   .loan-monthly-display {
-    display: flex;
-    align-items: center;
+    display: block;
+    line-height: 2.2rem;
     height: 2.2rem;
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: 6px;
-    padding: 0.4rem 0.6rem;
+    padding: 0 0.6rem;
     font-size: 0.88rem;
     color: var(--text-muted);
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
     box-sizing: border-box;
   }
+  .loan-row.precise { position: relative; }
   .shared-banner {
     display: flex;
     align-items: center;
@@ -648,7 +667,7 @@
         <div class="error-msg" id="err_income"></div>
       </div>
       <div class="param-group">
-        <label for="p_expenses">年支出 (NT$)<span class="info-tip" data-tip="預設為 113 年台灣每人消費支出約 32 萬（主計總處家庭收支調查）">&#9432;</span></label>
+        <label for="p_expenses">年支出 (NT$)<span class="info-tip" data-tip="日常生活支出（食衣住行、保險、娛樂等）。不要包含貸款還款——貸款請在下方「貸款」區塊填寫，系統會自動加進計算">&#9432;</span></label>
         <input type="text" inputmode="numeric" id="p_expenses" value="320,000">
         <div class="error-msg" id="err_expenses"></div>
       </div>
@@ -770,7 +789,7 @@
     </div>
     <div class="note-item">
       <h4>FIRE 與 25 倍法則</h4>
-      <p>FIRE（Financial Independence, Retire Early）社群常用的經驗法則：當你的資產達到年支出的 25 倍，每年提領 4% 就能覆蓋生活費，理論上資產不會耗盡。</p>
+      <p>FIRE（Financial Independence, Retire Early）社群常用的經驗法則：當你的資產達到年支出的 25 倍，每年提領 4% 就能覆蓋生活費，理論上資產不會耗盡。本站的「財務自由倍數」也把當年貸款還款計入分母，因此貸款還在時倍數會偏低；還清後會自動上升。</p>
     </div>
     <div class="note-item">
       <h4>悲觀 / 基準 / 樂觀</h4>
@@ -877,22 +896,28 @@ const Simulation = (() => {
     let total = 0;
     const monthStart = yearIndex * 12;
     for (const loan of loans) {
-      const rm = loan.remainingMonths || 0;
-      const active = Math.max(0, Math.min(12, rm - monthStart));
-      if (active <= 0) continue;
       if (mode === "simple") {
-        total += (loan.monthlyPayment || 0) * active;
+        const rm = loan.remainingMonths || 0;
+        const active = Math.max(0, Math.min(12, rm - monthStart));
+        if (active > 0) total += (loan.monthlyPayment || 0) * active;
         continue;
       }
+      const rm = loan.remainingMonths || 0;
+      const balance = loan.balance || 0;
       const gp = loan.gracePeriodMonths || 0;
+      const active = Math.max(0, Math.min(12, rm - monthStart));
+      if (active <= 0) continue;
+      if (balance <= 0 && (loan.monthlyPayment || 0) > 0) {
+        total += loan.monthlyPayment * active;
+        continue;
+      }
+      const amortMonths = Math.max(1, rm - gp);
+      const amortMp = calcMonthlyPayment(balance, loan.rate || 0, amortMonths / 12);
+      const graceMp = calcGraceMonthlyPayment(balance, loan.rate || 0);
       for (let m = 0; m < active; m++) {
-        const globalMonth = monthStart + m;
-        if (globalMonth < gp) {
-          total += calcGraceMonthlyPayment(loan.balance, loan.rate);
-        } else {
-          const remainAfterGrace = Math.max(1, rm - gp);
-          total += calcMonthlyPayment(loan.balance, loan.rate, remainAfterGrace / 12);
-        }
+        const loanMonth = monthStart + m;
+        if (loanMonth < gp) total += graceMp;
+        else total += amortMp;
       }
     }
     return total;
@@ -908,6 +933,7 @@ const Simulation = (() => {
       const active = Math.max(0, Math.min(12, rm - monthStart));
       if (active <= 0) continue;
       const gp = loan.gracePeriodMonths || 0;
+      const displayName = loan.name || "未命名貸款";
       if (mode !== "simple" && gp > 0) {
         // Count grace vs normal months in this year
         let graceMonths = 0, normalMonths = 0;
@@ -923,23 +949,28 @@ const Simulation = (() => {
           const nt = normalMp * normalMonths;
           loanTotal = gt + nt;
           total += loanTotal;
-          parts.push(`${loan.name}(寬限): ${addCommas(graceMp)}/月 × ${graceMonths}月 = ${addCommas(gt)}\n${loan.name}(正常): ${addCommas(normalMp)}/月 × ${normalMonths}月 = ${addCommas(nt)}`);
+          parts.push(`${displayName}(寬限): ${addCommas(graceMp)}/月 × ${graceMonths}月 = ${addCommas(gt)}\n${displayName}(正常): ${addCommas(normalMp)}/月 × ${normalMonths}月 = ${addCommas(nt)}`);
         } else if (graceMonths > 0) {
           loanTotal = graceMp * graceMonths;
           total += loanTotal;
-          parts.push(`${loan.name}(寬限): ${addCommas(graceMp)}/月 × ${graceMonths}月 = ${addCommas(loanTotal)}`);
+          parts.push(`${displayName}(寬限): ${addCommas(graceMp)}/月 × ${graceMonths}月 = ${addCommas(loanTotal)}`);
         } else {
           loanTotal = normalMp * normalMonths;
           total += loanTotal;
-          parts.push(`${loan.name}: ${addCommas(normalMp)}/月 × ${normalMonths}月 = ${addCommas(loanTotal)}`);
+          parts.push(`${displayName}: ${addCommas(normalMp)}/月 × ${normalMonths}月 = ${addCommas(loanTotal)}`);
         }
       } else {
-        const mp = mode === "simple"
-          ? (loan.monthlyPayment || 0)
-          : calcMonthlyPayment(loan.balance, loan.rate, rm / 12);
+        let mp;
+        if (mode === "simple") {
+          mp = loan.monthlyPayment || 0;
+        } else if ((loan.balance || 0) <= 0 && (loan.monthlyPayment || 0) > 0) {
+          mp = loan.monthlyPayment;
+        } else {
+          mp = calcMonthlyPayment(loan.balance, loan.rate, rm / 12);
+        }
         const loanTotal = mp * active;
         total += loanTotal;
-        parts.push(`${loan.name}: ${addCommas(Math.round(mp))}/月 × ${active}月 = ${addCommas(Math.round(loanTotal))}`);
+        parts.push(`${displayName}: ${addCommas(Math.round(mp))}/月 × ${active}月 = ${addCommas(Math.round(loanTotal))}`);
       }
     }
     if (parts.length === 0) return "";
@@ -1224,76 +1255,86 @@ function restoreLoanMode() {
   } catch(e) {}
 }
 
-function migrateLoans(arr) {
-  return arr.map(l => {
-    if (l.monthlyPayment != null && l.balance == null) {
-      const months = l.remainingMonths ?? (l.remainingYears != null ? Math.round(l.remainingYears * 12) : 0);
-      return { name: l.name, monthlyPayment: l.monthlyPayment, balance: 0, rate: 0, remainingMonths: months };
-    }
-    if (l.remainingMonths == null && l.remainingYears != null) {
-      l = { name: l.name, balance: l.balance || 0, rate: l.rate || 0, remainingMonths: Math.round(l.remainingYears * 12) };
-    }
-    if (l.monthlyPayment == null) l.monthlyPayment = 0;
-    if (l.gracePeriodMonths == null) l.gracePeriodMonths = 0;
-    return l;
-  });
-}
-
 function restoreLoans() {
   if (sharedView) return;
   const sp = new URLSearchParams(window.location.search);
   const urlLoans = sp.get("loans");
   if (urlLoans) {
-    try { loans = migrateLoans(JSON.parse(urlLoans)); return; } catch(e) {}
+    try { loans = JSON.parse(urlLoans); return; } catch(e) {}
   }
   try {
     const raw = localStorage.getItem(LS_LOANS_KEY);
     if (!raw) return;
-    loans = migrateLoans(JSON.parse(raw));
+    loans = JSON.parse(raw);
   } catch(e) {}
+}
+
+function preciseMonthlyPaymentText(loan) {
+  const balance = loan.balance || 0;
+  const remainingMonths = loan.remainingMonths || 0;
+  const gp = loan.gracePeriodMonths || 0;
+  if (balance <= 0 && (loan.monthlyPayment || 0) > 0) {
+    return addCommas(loan.monthlyPayment);
+  }
+  if (gp > 0) {
+    const graceMp = calcGraceMonthlyPayment(balance, loan.rate || 0);
+    const amortMonths = Math.max(1, remainingMonths - gp);
+    const normalMp = calcMonthlyPayment(balance, loan.rate || 0, amortMonths / 12);
+    return `寬限 ${addCommas(graceMp)} → 之後 ${normalMp > 0 ? addCommas(normalMp) : "—"}`;
+  }
+  const mp = calcMonthlyPayment(balance, loan.rate || 0, remainingMonths / 12);
+  return mp > 0 ? addCommas(mp) : "—";
+}
+
+function isLoanFieldTouched(loan, field) {
+  if (sharedView) return true;
+  if (!Array.isArray(loan._touched)) return true; // legacy loans = all touched
+  return loan._touched.includes(field);
+}
+function markLoanFieldTouched(loan, field) {
+  if (sharedView) return;
+  if (!Array.isArray(loan._touched)) loan._touched = [];
+  if (!loan._touched.includes(field)) loan._touched.push(field);
+}
+function loanFieldCls(loan, field) {
+  return isLoanFieldTouched(loan, field) ? "" : " placeholder-style";
 }
 
 function renderLoanRows() {
   const container = document.getElementById("loanList");
+  const hideName = loanMode === "simple" && loans.length <= 1;
   let header = "";
   if (loans.length > 0) {
     if (loanMode === "simple") {
-      header = `<div class="loan-header simple"><span>名稱</span><span>每月還款 (NT$)</span><span>剩餘期數（月）</span><span></span></div>`;
+      const nameCol = hideName ? "" : `<span>名稱</span>`;
+      header = `<div class="loan-header simple${hideName ? " no-name" : ""}">${nameCol}<span>每月還款 (NT$)</span><span>剩餘期數（月）</span><span></span></div>`;
     } else {
-      header = `<div class="loan-header precise"><span>名稱</span><span>貸款餘額 (NT$)</span><span>年利率 (%)</span><span>剩餘期數（月）</span><span>寬限期（月）</span><span>月付額</span><span></span></div>`;
+      header = `<div class="loan-header precise"><span>名稱</span><span>餘額 (NT$)</span><span>年利率 (%)</span><span>剩餘期數（月）</span><span>寬限期（月）</span><span>月付額</span><span></span></div>`;
     }
   }
   const rows = loans.map((loan, i) => {
     const rm = loan.remainingMonths || 0;
     if (loanMode === "simple") {
+      const nameField = hideName ? "" : `<div><label>名稱</label><input type="text" data-field="name" placeholder="未命名貸款" value="${escAttr(loan.name || "")}"></div>`;
       return `
-      <div class="loan-row simple" data-index="${i}">
-        <div><label>名稱</label><input type="text" data-field="name" value="${escAttr(loan.name || "")}"></div>
-        <div><label>每月還款 (NT$)</label><input type="text" inputmode="numeric" data-field="monthlyPayment" value="${addCommas(loan.monthlyPayment || 0)}"></div>
-        <div><label>剩餘期數（月）</label><input type="number" inputmode="numeric" data-field="remainingMonths" value="${rm}" min="0" step="1"></div>
+      <div class="loan-row simple${hideName ? " no-name" : ""}" data-index="${i}">
+        ${nameField}
+        <div><label>每月還款 (NT$)</label><input type="text" inputmode="numeric" data-field="monthlyPayment" class="${loanFieldCls(loan, "monthlyPayment").trim()}" value="${addCommas(loan.monthlyPayment || 0)}"></div>
+        <div><label>剩餘期數（月）</label><input type="number" inputmode="numeric" data-field="remainingMonths" class="${loanFieldCls(loan, "remainingMonths").trim()}" value="${rm}" min="0" step="1"></div>
         <button type="button" class="loan-remove-btn" title="刪除">&times;</button>
       </div>`;
     } else {
       const gp = loan.gracePeriodMonths || 0;
-      const hasGrace = gp > 0;
-      let mpText;
-      if (hasGrace) {
-        const graceMp = calcGraceMonthlyPayment(loan.balance || 0, loan.rate || 0);
-        const remainAfterGrace = Math.max(1, rm - gp);
-        const normalMp = calcMonthlyPayment(loan.balance || 0, loan.rate || 0, remainAfterGrace / 12);
-        mpText = `寬限 ${addCommas(graceMp)} → 之後 ${normalMp > 0 ? addCommas(normalMp) : "—"}`;
-      } else {
-        const mp = calcMonthlyPayment(loan.balance || 0, loan.rate || 0, rm / 12);
-        mpText = mp > 0 ? addCommas(mp) : "—";
-      }
+      const balance = loan.balance || 0;
+      const mpText = preciseMonthlyPaymentText(loan);
       return `
       <div class="loan-row precise" data-index="${i}">
-        <div><label>名稱</label><input type="text" data-field="name" value="${escAttr(loan.name || "")}"></div>
-        <div><label>貸款餘額 (NT$)</label><input type="text" inputmode="numeric" data-field="balance" value="${addCommas(loan.balance || 0)}"></div>
-        <div><label>年利率 (%)</label><input type="number" inputmode="decimal" data-field="rate" value="${loan.rate ? +(loan.rate * 100).toFixed(2) : 0}" min="0" step="0.1"></div>
-        <div><label>剩餘期數（月）</label><input type="number" inputmode="numeric" data-field="remainingMonths" value="${rm}" min="0" step="1"></div>
-        <div><label>寬限期（月）</label><input type="number" inputmode="numeric" data-field="gracePeriodMonths" value="${gp}" min="0" step="1"></div>
-        <div><label>月付額</label><span class="loan-monthly-display">${mpText}</span></div>
+        <div class="loan-cell-name"><label>名稱</label><input type="text" data-field="name" placeholder="未命名貸款" value="${escAttr(loan.name || "")}"></div>
+        <div class="loan-cell-balance"><label>餘額 (NT$)</label><input type="text" inputmode="numeric" data-field="balance" class="${loanFieldCls(loan, "balance").trim()}" value="${addCommas(balance)}"></div>
+        <div class="loan-cell-rate"><label>年利率 (%)</label><input type="number" inputmode="decimal" data-field="rate" class="${loanFieldCls(loan, "rate").trim()}" value="${loan.rate ? +(loan.rate * 100).toFixed(2) : 0}" min="0" step="0.1"></div>
+        <div class="loan-cell-remaining"><label>剩餘期數（月）</label><input type="number" inputmode="numeric" data-field="remainingMonths" class="${loanFieldCls(loan, "remainingMonths").trim()}" value="${rm}" min="0" step="1"></div>
+        <div class="loan-cell-grace"><label>寬限期（月）</label><input type="number" inputmode="numeric" data-field="gracePeriodMonths" class="${loanFieldCls(loan, "gracePeriodMonths").trim()}" value="${gp}" min="0" step="1"></div>
+        <div class="loan-cell-monthly"><label>月付額</label><span class="loan-monthly-display">${mpText}</span></div>
         <button type="button" class="loan-remove-btn" title="刪除">&times;</button>
       </div>`;
     }
@@ -1314,56 +1355,55 @@ function bindLoanEvents() {
       recalculate();
     });
 
-    row.querySelector('input[data-field="name"]').addEventListener("input", (e) => {
-      loans[idx].name = e.target.value;
-      saveLoans();
-    });
+    const nameInput = row.querySelector('input[data-field="name"]');
+    if (nameInput) {
+      nameInput.addEventListener("input", (e) => {
+        loans[idx].name = e.target.value;
+        saveLoans();
+      });
+    }
+
+    function touchAndStyle(field) {
+      markLoanFieldTouched(loans[idx], field);
+      const el = row.querySelector(`input[data-field="${field}"]`);
+      if (el) el.classList.remove("placeholder-style");
+    }
 
     if (loanMode === "simple") {
       initMoneyInput(row.querySelector('input[data-field="monthlyPayment"]'), {
         defaultVal: "0",
-        onInput(v) { loans[idx].monthlyPayment = v; saveLoans(); },
-        onBlur(v)  { loans[idx].monthlyPayment = v; saveLoans(); recalculate(); }
+        onInput(v) { loans[idx].monthlyPayment = v; touchAndStyle("monthlyPayment"); saveLoans(); },
+        onBlur(v)  { loans[idx].monthlyPayment = v; touchAndStyle("monthlyPayment"); saveLoans(); recalculate(); }
       });
       initNumberInput(row.querySelector('input[data-field="remainingMonths"]'), {
         defaultVal: "0", integer: true, normalize: true, min: 0,
-        onInput(v) { loans[idx].remainingMonths = v; saveLoans(); },
-        onBlur(v)  { loans[idx].remainingMonths = v; saveLoans(); recalculate(); }
+        onInput(v) { loans[idx].remainingMonths = v; touchAndStyle("remainingMonths"); saveLoans(); },
+        onBlur(v)  { loans[idx].remainingMonths = v; touchAndStyle("remainingMonths"); saveLoans(); recalculate(); }
       });
     } else {
       function updateMonthlyDisplay() {
         const display = row.querySelector(".loan-monthly-display");
-        const rm = loans[idx].remainingMonths || 0;
-        const gp = loans[idx].gracePeriodMonths || 0;
-        if (gp > 0) {
-          const graceMp = calcGraceMonthlyPayment(loans[idx].balance || 0, loans[idx].rate || 0);
-          const remainAfterGrace = Math.max(1, rm - gp);
-          const normalMp = calcMonthlyPayment(loans[idx].balance || 0, loans[idx].rate || 0, remainAfterGrace / 12);
-          display.textContent = `寬限 ${addCommas(graceMp)} → 之後 ${normalMp > 0 ? addCommas(normalMp) : "—"}`;
-        } else {
-          const mp = calcMonthlyPayment(loans[idx].balance || 0, loans[idx].rate || 0, rm / 12);
-          display.textContent = mp > 0 ? addCommas(mp) : "—";
-        }
+        display.textContent = preciseMonthlyPaymentText(loans[idx]);
       }
       initMoneyInput(row.querySelector('input[data-field="balance"]'), {
         defaultVal: "0",
-        onInput(v) { loans[idx].balance = v; saveLoans(); updateMonthlyDisplay(); },
-        onBlur(v)  { loans[idx].balance = v; saveLoans(); updateMonthlyDisplay(); recalculate(); }
+        onInput(v) { loans[idx].balance = v; touchAndStyle("balance"); saveLoans(); updateMonthlyDisplay(); },
+        onBlur(v)  { loans[idx].balance = v; touchAndStyle("balance"); saveLoans(); updateMonthlyDisplay(); recalculate(); }
       });
       initNumberInput(row.querySelector('input[data-field="rate"]'), {
         defaultVal: "0", normalize: true, min: 0,
-        onInput(v) { loans[idx].rate = v / 100; saveLoans(); updateMonthlyDisplay(); },
-        onBlur(v)  { loans[idx].rate = v / 100; saveLoans(); updateMonthlyDisplay(); recalculate(); }
+        onInput(v) { loans[idx].rate = v / 100; touchAndStyle("rate"); saveLoans(); updateMonthlyDisplay(); },
+        onBlur(v)  { loans[idx].rate = v / 100; touchAndStyle("rate"); saveLoans(); updateMonthlyDisplay(); recalculate(); }
       });
       initNumberInput(row.querySelector('input[data-field="remainingMonths"]'), {
         defaultVal: "0", integer: true, normalize: true, min: 0,
-        onInput(v) { loans[idx].remainingMonths = v; saveLoans(); updateMonthlyDisplay(); },
-        onBlur(v)  { loans[idx].remainingMonths = v; saveLoans(); updateMonthlyDisplay(); recalculate(); }
+        onInput(v) { loans[idx].remainingMonths = v; touchAndStyle("remainingMonths"); saveLoans(); updateMonthlyDisplay(); },
+        onBlur(v)  { loans[idx].remainingMonths = v; touchAndStyle("remainingMonths"); saveLoans(); updateMonthlyDisplay(); recalculate(); }
       });
       initNumberInput(row.querySelector('input[data-field="gracePeriodMonths"]'), {
         defaultVal: "0", integer: true, normalize: true, min: 0,
-        onInput(v) { loans[idx].gracePeriodMonths = v; saveLoans(); updateMonthlyDisplay(); },
-        onBlur(v)  { loans[idx].gracePeriodMonths = v; saveLoans(); updateMonthlyDisplay(); recalculate(); }
+        onInput(v) { loans[idx].gracePeriodMonths = v; touchAndStyle("gracePeriodMonths"); saveLoans(); updateMonthlyDisplay(); },
+        onBlur(v)  { loans[idx].gracePeriodMonths = v; touchAndStyle("gracePeriodMonths"); saveLoans(); updateMonthlyDisplay(); recalculate(); }
       });
     }
   });
@@ -1395,7 +1435,7 @@ function restoreParams() {
     }
     const urlLoans = sp.get("loans");
     if (urlLoans) {
-      try { loans = migrateLoans(JSON.parse(urlLoans)); } catch(e) {}
+      try { loans = JSON.parse(urlLoans); } catch(e) {}
     }
     const urlLoanMode = sp.get("loanMode");
     if (urlLoanMode === "simple" || urlLoanMode === "precise") {
@@ -1449,6 +1489,8 @@ window.resetDefaults = function() {
   saveLoans();
   saveParams();
   syncReturnVisibility();
+  try { localStorage.removeItem(LS_TOUCHED_KEY); } catch(e) {}
+  applyPlaceholderStyles();
   recalculate();
   showToast("已重設為預設值");
 }
@@ -1489,12 +1531,46 @@ let debounceTimer;
 const debouncedRecalc = () => { saveParams(); clearTimeout(debounceTimer); debounceTimer = setTimeout(recalculate, 300); };
 const blurRecalc = () => { saveParams(); recalculate(); };
 Input.initParamBindings(debouncedRecalc, blurRecalc, syncReturnVisibility);
+
+// ── Touched-state tracking for default-value placeholder styling ──
+const LS_TOUCHED_KEY = "fire_touched_fields";
+// All main params except 通膨率 get placeholder styling until user interacts.
+const PLACEHOLDER_FIELDS = ALL_FIELDS.filter(id => id !== "p_inflation");
+
+function getTouchedFields() {
+  try {
+    const raw = localStorage.getItem(LS_TOUCHED_KEY);
+    return new Set(raw ? JSON.parse(raw) : []);
+  } catch(e) { return new Set(); }
+}
+function applyPlaceholderStyles() {
+  const touched = getTouchedFields();
+  for (const id of PLACEHOLDER_FIELDS) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    el.classList.toggle("placeholder-style", !sharedView && !touched.has(id));
+  }
+}
+function markTouched(fieldId) {
+  if (sharedView) return;
+  const touched = getTouchedFields();
+  if (touched.has(fieldId)) return;
+  touched.add(fieldId);
+  try { localStorage.setItem(LS_TOUCHED_KEY, JSON.stringify([...touched])); } catch(e) {}
+  applyPlaceholderStyles();
+}
+PLACEHOLDER_FIELDS.forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener("input", () => markTouched(id));
+});
+
 restoreParams();
 restoreLoanMode();
 restoreLoans();
 updateModeToggleUI();
 renderLoanRows();
 syncReturnVisibility();
+applyPlaceholderStyles();
 
 // ── Section collapse state persistence ──
 const LS_SECTIONS_KEY = "fire_sections";
@@ -1530,19 +1606,23 @@ for (const sel of Object.values(SECTION_SELECTORS)) {
 }
 
 // ── Add Loan button ──
-function nextLoanName() {
-  const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-  const used = new Set(loans.map(l => l.name));
-  for (const ch of letters) {
-    const n = "貸款 " + ch;
-    if (!used.has(n)) return n;
-  }
-  return "貸款 " + (loans.length + 1);
-}
 document.getElementById("addLoanBtn").addEventListener("click", () => {
-  loans.push({ name: nextLoanName(), monthlyPayment: 0, balance: 0, rate: 0, remainingMonths: 0 });
+  const wasOneSimple = loans.length === 1 && loanMode === "simple";
+  loans.push({
+    name: "",
+    monthlyPayment: 0,
+    balance: 0,
+    rate: 0,
+    remainingMonths: 0,
+    gracePeriodMonths: 0,
+    _touched: [],
+  });
   renderLoanRows();
   saveLoans();
+  if (wasOneSimple) {
+    const firstName = document.querySelector('.loan-row[data-index="0"] input[data-field="name"]');
+    if (firstName) firstName.focus();
+  }
 });
 
 // ── Loan mode toggle ──
@@ -1555,17 +1635,21 @@ document.querySelectorAll("#loansSection .loan-mode-toggle button").forEach(btn 
   btn.addEventListener("click", () => {
     const newMode = btn.dataset.mode;
     if (newMode === loanMode) return;
-    // Precise → Simple: auto-fill monthlyPayment from calculation
+    // Precise → Simple: auto-fill monthlyPayment from current snapshot.
+    // Skip when balance is empty (e.g. loan came from simple mode and was never
+    // upgraded with balance/rate) — preserve the existing monthlyPayment.
     if (loanMode === "precise" && newMode === "simple") {
       loans.forEach(loan => {
+        const balance = loan.balance || 0;
+        if (balance <= 0) return;
         const rm = loan.remainingMonths || 0;
         const gp = loan.gracePeriodMonths || 0;
         if (gp > 0) {
-          // Currently in grace period: use grace monthly payment
-          loan.monthlyPayment = calcGraceMonthlyPayment(loan.balance || 0, loan.rate || 0);
+          loan.monthlyPayment = calcGraceMonthlyPayment(balance, loan.rate || 0);
         } else {
-          loan.monthlyPayment = calcMonthlyPayment(loan.balance || 0, loan.rate || 0, rm / 12);
+          loan.monthlyPayment = calcMonthlyPayment(balance, loan.rate || 0, rm / 12);
         }
+        markLoanFieldTouched(loan, "monthlyPayment");
       });
       saveLoans();
     }
@@ -1813,7 +1897,7 @@ function c3GetIncOverride() {
 }
 // Handle/label Y helpers — mobile: handle at bottom (thumb-friendly), desktop: handle at top
 function retireHandleY(top, bottom, mob) {
-  return mob ? bottom - 22 : top + 28;
+  return top + 28;
 }
 function incLabelY(incY, iph, chartTop, dragging, mob) {
   if (dragging && mob) {
@@ -1947,7 +2031,7 @@ const dragLinePlugin = {
     ctx.font = "bold 12px -apple-system, sans-serif"; ctx.textAlign = "center";
     ctx.strokeStyle = "#0f1117"; ctx.lineWidth = mob ? 1 : 3; ctx.lineJoin = "round";
     ctx.fillStyle = "#e4e4e7";
-    const rly = mob ? cy - ph - 16 : cy + ph + 16;
+    const rly = cy + ph + 16;
     ctx.strokeText(c3RetireAge + " 歲退休", lineX, rly);
     ctx.fillText(c3RetireAge + " 歲退休", lineX, rly);
     ctx.restore();
@@ -2211,11 +2295,12 @@ function validateAll() {
 function renderMetrics(p, activeLoans, lMode) {
   const yearLoan = calcYearLoanPayment(activeLoans || [], 0, lMode);
   const investable = p.income - p.expenses - yearLoan;
-  const fireRatio = p.expenses > 0 ? (p.assets / p.expenses).toFixed(1) : "∞";
+  const totalAnnualOutflow = p.expenses + yearLoan;
+  const fireRatio = totalAnnualOutflow > 0 ? (p.assets / totalAnnualOutflow).toFixed(1) : "∞";
   const fireTip = yearLoan > 0
-    ? "又稱 FIRE 倍數 = 資產 ÷ 年支出（不含貸款，因貸款是暫時性支出）。到 25 倍即達 4% 法則門檻；貸款影響已在退休年齡試算中計入"
+    ? "資產 ÷ (年支出 + 當年貸款還款)。反映目前總現金流的覆蓋年數。貸款還清後倍數會自動上升"
     : "又稱 FIRE 倍數。當資產 = 年支出 × 25，每年提領 4% 即可覆蓋支出（4% 法則）";
-  const fireSub = yearLoan > 0 ? "不含貸款；到 25 倍就差不多了" : "到 25 倍就差不多了";
+  const fireSub = yearLoan > 0 ? "含當年貸款；還清後會上升" : "到 25 倍就差不多了";
   document.getElementById("metrics").innerHTML = `
     <div class="metric-card"><div class="label">現有資產</div><div class="value">NT$ ${(p.assets/1e4).toFixed(0)} 萬</div><div class="sub">可投資的錢</div></div>
     <div class="metric-card"><div class="label">每年可存下</div><div class="value ${investable >= 0 ? 'green' : 'red'}">NT$ ${(investable/1e4).toFixed(1)} 萬</div><div class="sub">收入 − 支出${yearLoan > 0 ? " − 貸款" : ""}</div></div>
@@ -2379,6 +2464,7 @@ window.restoreMyData = function() {
   renderLoanRows();
   syncReturnVisibility();
   restoreSectionStates();
+  applyPlaceholderStyles();
   recalculate();
 };
 
@@ -2391,7 +2477,7 @@ if (window.__TEST__) {
   window.__FIRE__ = {
     clamp, stripCommas, addCommas, simulate, findEarliest,
     calcMonthlyPayment, calcGraceMonthlyPayment, calcYearLoanPayment,
-    migrateLoans, escAttr, buildLoanFormula,
+    escAttr, buildLoanFormula,
     c3Returns, hexAlpha, validateAll, getParams, recalculate,
     currentAge, saveParams, restoreParams, VALIDATIONS, DEFAULTS,
     retireHandleY, incLabelY,

@@ -10,6 +10,167 @@ async function setup(page: Page) {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Default value placeholder styling (touched-state)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+test.describe("default value placeholder styling", () => {
+  test("untouched age field has placeholder-style class", async ({ page }) => {
+    await setup(page);
+    const cls = await page.locator("#p_age").evaluate(el => el.classList.contains("placeholder-style"));
+    expect(cls).toBe(true);
+  });
+
+  test("untouched income field has placeholder-style class", async ({ page }) => {
+    await setup(page);
+    const cls = await page.locator("#p_income").evaluate(el => el.classList.contains("placeholder-style"));
+    expect(cls).toBe(true);
+  });
+
+  test("inflation field NEVER has placeholder-style class (excluded)", async ({ page }) => {
+    await setup(page);
+    const cls = await page.locator("#p_inflation").evaluate(el => el.classList.contains("placeholder-style"));
+    expect(cls).toBe(false);
+  });
+
+  test("typing into a field removes placeholder-style", async ({ page }) => {
+    await setup(page);
+    await page.locator("#p_age").fill("30");
+    await page.waitForTimeout(200);
+    const cls = await page.locator("#p_age").evaluate(el => el.classList.contains("placeholder-style"));
+    expect(cls).toBe(false);
+  });
+
+  test("touched state persists across reload", async ({ page }) => {
+    await setup(page);
+    await page.locator("#p_age").fill("30");
+    await page.locator("#p_age").blur();
+    await page.waitForTimeout(300);
+    await page.reload();
+    await page.waitForFunction(() => (window as any).__FIRE__);
+    const cls = await page.locator("#p_age").evaluate(el => el.classList.contains("placeholder-style"));
+    expect(cls).toBe(false);
+  });
+
+  test("user explicitly entering default value (22) still counts as touched", async ({ page }) => {
+    await setup(page);
+    await page.locator("#p_age").fill("22");
+    await page.waitForTimeout(200);
+    const cls = await page.locator("#p_age").evaluate(el => el.classList.contains("placeholder-style"));
+    expect(cls).toBe(false);
+  });
+
+  test("placeholder-style class produces italic style", async ({ page }) => {
+    await setup(page);
+    const fontStyle = await page.locator("#p_age").evaluate(el => getComputedStyle(el).fontStyle);
+    expect(fontStyle).toBe("italic");
+  });
+
+  test("reset button clears touched state (fields revert to placeholder-style)", async ({ page }) => {
+    await setup(page);
+    await page.locator("#p_age").fill("30");
+    await page.waitForTimeout(200);
+    page.on("dialog", d => d.accept());
+    await page.locator("#resetBtn").click();
+    await page.waitForTimeout(300);
+    const cls = await page.locator("#p_age").evaluate(el => el.classList.contains("placeholder-style"));
+    expect(cls).toBe(true);
+  });
+
+  test("other untouched fields remain placeholder when one field is touched", async ({ page }) => {
+    await setup(page);
+    await page.locator("#p_age").fill("30");
+    await page.waitForTimeout(200);
+    // Age is now touched; income should still be placeholder
+    const incomeCls = await page.locator("#p_income").evaluate(el => el.classList.contains("placeholder-style"));
+    expect(incomeCls).toBe(true);
+  });
+});
+
+test.describe("loan field default value placeholder styling", () => {
+  test("new precise loan has placeholder-style on all default numeric fields", async ({ page }) => {
+    await setup(page);
+    await ensureLoanSectionOpen(page);
+    await switchLoanMode(page, "precise");
+    await page.locator("#addLoanBtn").click();
+    const row = page.locator(".loan-row").first();
+    for (const field of ["balance", "rate", "remainingMonths", "gracePeriodMonths"]) {
+      const cls = await row.locator(`input[data-field="${field}"]`).evaluate(el => el.classList.contains("placeholder-style"));
+      expect(cls).toBe(true);
+    }
+  });
+
+  test("new simple loan has placeholder-style on monthlyPayment and remainingMonths", async ({ page }) => {
+    await setup(page);
+    await ensureLoanSectionOpen(page);
+    await switchLoanMode(page, "simple");
+    await page.locator("#addLoanBtn").click();
+    const row = page.locator(".loan-row").first();
+    expect(await row.locator('input[data-field="monthlyPayment"]').evaluate(el => el.classList.contains("placeholder-style"))).toBe(true);
+    expect(await row.locator('input[data-field="remainingMonths"]').evaluate(el => el.classList.contains("placeholder-style"))).toBe(true);
+  });
+
+  test("typing in balance removes its class but not others'", async ({ page }) => {
+    await setup(page);
+    await ensureLoanSectionOpen(page);
+    await switchLoanMode(page, "precise");
+    await page.locator("#addLoanBtn").click();
+    const row = page.locator(".loan-row").first();
+    await row.locator('input[data-field="balance"]').fill("100000");
+    await page.waitForTimeout(200);
+    expect(await row.locator('input[data-field="balance"]').evaluate(el => el.classList.contains("placeholder-style"))).toBe(false);
+    expect(await row.locator('input[data-field="rate"]').evaluate(el => el.classList.contains("placeholder-style"))).toBe(true);
+    expect(await row.locator('input[data-field="remainingMonths"]').evaluate(el => el.classList.contains("placeholder-style"))).toBe(true);
+  });
+
+  test("legacy loan without _touched array shows no placeholder-style", async ({ page }) => {
+    await page.addInitScript(() => {
+      (window as any).__TEST__ = true;
+      localStorage.setItem("fire_loans", JSON.stringify([{
+        name: "房貸", balance: 8000000, rate: 0.021, remainingMonths: 240, gracePeriodMonths: 0
+      }]));
+      localStorage.setItem("fire_loan_mode", "precise");
+    });
+    await page.goto("/");
+    await page.waitForFunction(() => (window as any).__FIRE__);
+    await ensureLoanSectionOpen(page);
+    const row = page.locator(".loan-row").first();
+    for (const field of ["balance", "rate", "remainingMonths", "gracePeriodMonths"]) {
+      const cls = await row.locator(`input[data-field="${field}"]`).evaluate(el => el.classList.contains("placeholder-style"));
+      expect(cls).toBe(false);
+    }
+  });
+
+  test("touched loan field state persists across reload", async ({ page }) => {
+    await setup(page);
+    await ensureLoanSectionOpen(page);
+    await switchLoanMode(page, "precise");
+    await page.locator("#addLoanBtn").click();
+    const row = page.locator(".loan-row").first();
+    await row.locator('input[data-field="balance"]').fill("100000");
+    await row.locator('input[data-field="balance"]').blur();
+    await page.waitForTimeout(300);
+    await page.reload();
+    await page.waitForFunction(() => (window as any).__FIRE__);
+    await ensureLoanSectionOpen(page);
+    const reloadedRow = page.locator(".loan-row").first();
+    expect(await reloadedRow.locator('input[data-field="balance"]').evaluate(el => el.classList.contains("placeholder-style"))).toBe(false);
+    expect(await reloadedRow.locator('input[data-field="rate"]').evaluate(el => el.classList.contains("placeholder-style"))).toBe(true);
+  });
+
+  test("precise→simple auto-fill marks monthlyPayment as touched (no placeholder)", async ({ page }) => {
+    await setup(page);
+    await addLoanPrecise(page, "房貸", "8,000,000", "2.1", "240");
+    await switchLoanMode(page, "simple");
+    await page.waitForTimeout(300);
+    const mp = page.locator('.loan-row input[data-field="monthlyPayment"]');
+    // Value should be auto-filled
+    expect(await mp.inputValue()).toContain("40,851");
+    // And it should NOT be styled as placeholder (it's a computed real value)
+    expect(await mp.evaluate(el => el.classList.contains("placeholder-style"))).toBe(false);
+  });
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // P2: Validation
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -396,10 +557,10 @@ test.describe("P5: loans UI", () => {
     await page.locator(`#loansSection .loan-mode-toggle [data-mode="precise"]`).click();
     await page.waitForTimeout(200);
     await page.locator("#addLoanBtn").click();
-    const bal = page.locator('.loan-row input[data-field="balance"]');
-    await expect(bal).toHaveValue("0");
-    await bal.focus();
-    await expect(bal).toHaveValue("");
+    const balance = page.locator('.loan-row input[data-field="balance"]');
+    await expect(balance).toHaveValue("0");
+    await balance.focus();
+    await expect(balance).toHaveValue("");
   });
 
   test("loan rate clears '0' on focus", async ({ page }) => {
@@ -414,7 +575,7 @@ test.describe("P5: loans UI", () => {
     await expect(rate).toHaveValue("");
   });
 
-  test("loan remaining months clears '0' on focus", async ({ page }) => {
+  test("loan remainingMonths clears '0' on focus", async ({ page }) => {
     await setup(page);
     await ensureLoanSectionOpen(page);
     await page.locator(`#loansSection .loan-mode-toggle [data-mode="precise"]`).click();
@@ -430,11 +591,11 @@ test.describe("P5: loans UI", () => {
     await setup(page);
     await switchLoanMode(page, "precise");
     await page.locator("#addLoanBtn").click();
-    const bal = page.locator('.loan-row input[data-field="balance"]');
-    await bal.focus();
-    await expect(bal).toHaveValue("");
-    await bal.blur();
-    await expect(bal).toHaveValue("0");
+    const balance = page.locator('.loan-row input[data-field="balance"]');
+    await balance.focus();
+    await expect(balance).toHaveValue("");
+    await balance.blur();
+    await expect(balance).toHaveValue("0");
   });
 });
 
@@ -449,7 +610,7 @@ async function switchLoanMode(page: Page, mode: "simple" | "precise") {
   await page.waitForTimeout(200);
 }
 
-// Precise mode helper (for existing tests)
+// Precise mode helper — uses balance/rate/remainingMonths fields
 async function addLoanPrecise(page: Page, name: string, balance: string, rate: string, months: string) {
   await switchLoanMode(page, "precise");
   await page.locator("#addLoanBtn").click();
@@ -467,7 +628,19 @@ async function addLoanSimple(page: Page, name: string, monthlyPayment: string, m
   await switchLoanMode(page, "simple");
   await page.locator("#addLoanBtn").click();
   const lastRow = page.locator(".loan-row").last();
-  await lastRow.locator('input[data-field="name"]').fill(name);
+  const nameInput = lastRow.locator('input[data-field="name"]');
+  if (await nameInput.count() > 0) {
+    await nameInput.fill(name);
+  } else {
+    // Lazy name: single loan in simple mode hides name field. Set via JS bridge.
+    await page.evaluate((n) => {
+      const fire = (window as any).__FIRE__;
+      if (fire && fire.loans && fire.loans[0]) {
+        fire.loans[0].name = n;
+        fire.saveLoans?.();
+      }
+    }, name);
+  }
   await lastRow.locator('input[data-field="monthlyPayment"]').fill(monthlyPayment);
   await lastRow.locator('input[data-field="remainingMonths"]').fill(months);
   await lastRow.locator('input[data-field="remainingMonths"]').blur();
@@ -502,6 +675,8 @@ test.describe("P6: loan collapsible + dual mode", () => {
   test("simple mode shows name, monthlyPayment, remainingMonths", async ({ page }) => {
     await setup(page);
     await ensureLoanSectionOpen(page);
+    // Add 2 loans so name field is shown (lazy name: 1 loan hides name)
+    await page.locator("#addLoanBtn").click();
     await page.locator("#addLoanBtn").click();
     const row = page.locator(".loan-row").first();
     await expect(row.locator('input[data-field="name"]')).toBeVisible();
@@ -512,7 +687,7 @@ test.describe("P6: loan collapsible + dual mode", () => {
     await expect(row.locator('input[data-field="rate"]')).toHaveCount(0);
   });
 
-  test("switch to precise mode shows balance, rate, remainingMonths", async ({ page }) => {
+  test("precise mode shows manual entry fields (balance/rate/remainingMonths/grace)", async ({ page }) => {
     await setup(page);
     await ensureLoanSectionOpen(page);
     await page.locator("#addLoanBtn").click();
@@ -521,7 +696,13 @@ test.describe("P6: loan collapsible + dual mode", () => {
     await expect(row.locator('input[data-field="balance"]')).toBeVisible();
     await expect(row.locator('input[data-field="rate"]')).toBeVisible();
     await expect(row.locator('input[data-field="remainingMonths"]')).toBeVisible();
-    // monthly-display element exists (text empty with default 0 values)
+    await expect(row.locator('input[data-field="gracePeriodMonths"]')).toBeVisible();
+    // time-based fields are gone
+    await expect(row.locator('input[data-field="deductionDay"]')).toHaveCount(0);
+    await expect(row.locator('input[data-field="startDate"]')).toHaveCount(0);
+    await expect(row.locator('input[data-field="principal"]')).toHaveCount(0);
+    await expect(row.locator('input[data-field="totalMonths"]')).toHaveCount(0);
+    // monthly-display element still exists
     await expect(row.locator('.loan-monthly-display')).toHaveCount(1);
   });
 
@@ -534,6 +715,85 @@ test.describe("P6: loan collapsible + dual mode", () => {
     const val = await mp.inputValue();
     // calcMonthlyPayment(8_000_000, 0.021, 20) ≈ 40,851
     expect(val).toContain("40,851");
+  });
+
+  test("simple→precise preserves monthlyPayment in monthly display", async ({ page }) => {
+    await setup(page);
+    await addLoanSimple(page, "房貸", "40,000", "240");
+    await switchLoanMode(page, "precise");
+    // Monthly display should show the carried-over 40,000 (not "—" or 0)
+    const display = page.locator('.loan-row .loan-monthly-display');
+    await expect(display).toContainText("40,000");
+  });
+
+  // ──────────────────────────────────────────────────────────────
+  // Mode-switch invariants (three scenarios)
+  // ──────────────────────────────────────────────────────────────
+  test("Case 1: simple→precise preserves data and retirement age", async ({ page }) => {
+    await setup(page);
+    await page.locator("#p_income").fill("1,000,000");
+    await page.locator("#p_income").blur();
+    await addLoanSimple(page, "房貸", "40,000", "240");
+    await page.waitForTimeout(300);
+    const beforeAge = await page.locator("#conclusion strong").textContent();
+
+    await switchLoanMode(page, "precise");
+    await page.waitForTimeout(300);
+
+    // remainingMonths preserved in DOM
+    const rm = await page.locator('.loan-row input[data-field="remainingMonths"]').inputValue();
+    expect(rm).toBe("240");
+    // Monthly display carries over from simple mode
+    await expect(page.locator('.loan-row .loan-monthly-display')).toContainText("40,000");
+    // Simulation invariant: retirement age unchanged
+    const afterAge = await page.locator("#conclusion strong").textContent();
+    expect(afterAge).toBe(beforeAge);
+  });
+
+  test("Case 2: precise→simple auto-fills monthlyPayment and preserves retirement age", async ({ page }) => {
+    await setup(page);
+    await page.locator("#p_income").fill("1,000,000");
+    await page.locator("#p_income").blur();
+    await addLoanPrecise(page, "房貸", "8,000,000", "2.1", "240");
+    await page.waitForTimeout(300);
+    const beforeAge = await page.locator("#conclusion strong").textContent();
+
+    await switchLoanMode(page, "simple");
+    await page.waitForTimeout(300);
+
+    // monthlyPayment auto-filled (~40,851)
+    const mp = await page.locator('.loan-row input[data-field="monthlyPayment"]').inputValue();
+    expect(mp).toContain("40,851");
+    // remainingMonths preserved
+    const rm = await page.locator('.loan-row input[data-field="remainingMonths"]').inputValue();
+    expect(rm).toBe("240");
+    // Simulation invariant: retirement age unchanged
+    const afterAge = await page.locator("#conclusion strong").textContent();
+    expect(afterAge).toBe(beforeAge);
+  });
+
+  test("Case 3: simple→precise→simple round-trip preserves monthlyPayment", async ({ page }) => {
+    await setup(page);
+    await page.locator("#p_income").fill("1,000,000");
+    await page.locator("#p_income").blur();
+    await addLoanSimple(page, "房貸", "40,000", "240");
+    await page.waitForTimeout(300);
+    const beforeAge = await page.locator("#conclusion strong").textContent();
+
+    await switchLoanMode(page, "precise");
+    await page.waitForTimeout(200);
+    await switchLoanMode(page, "simple");
+    await page.waitForTimeout(300);
+
+    // monthlyPayment must still be the original 40,000 (not overwritten to 0)
+    const mp = await page.locator('.loan-row input[data-field="monthlyPayment"]').inputValue();
+    expect(mp).toBe("40,000");
+    // remainingMonths preserved
+    const rm = await page.locator('.loan-row input[data-field="remainingMonths"]').inputValue();
+    expect(rm).toBe("240");
+    // Simulation invariant: retirement age unchanged after round-trip
+    const afterAge = await page.locator("#conclusion strong").textContent();
+    expect(afterAge).toBe(beforeAge);
   });
 
   test("simple mode loan affects retirement age", async ({ page }) => {
@@ -592,20 +852,47 @@ test.describe("P6: loan collapsible + dual mode", () => {
     await expect(simpleBtn).toHaveClass(/active/);
   });
 
-  test("new loan gets auto-generated default name", async ({ page }) => {
+  test("new loan starts with empty name + placeholder (no auto-name)", async ({ page }) => {
     await setup(page);
     await ensureLoanSectionOpen(page);
+    await switchLoanMode(page, "precise");
     await page.locator("#addLoanBtn").click();
     const name1 = page.locator('.loan-row').first().locator('input[data-field="name"]');
-    await expect(name1).toHaveValue("貸款 A");
+    await expect(name1).toHaveValue("");
+    expect(await name1.getAttribute("placeholder")).toBe("未命名貸款");
+  });
+
+  test("multiple loans can all have empty names (no uniqueness enforced)", async ({ page }) => {
+    await setup(page);
+    await ensureLoanSectionOpen(page);
+    await switchLoanMode(page, "precise");
     await page.locator("#addLoanBtn").click();
-    const name2 = page.locator('.loan-row').last().locator('input[data-field="name"]');
-    await expect(name2).toHaveValue("貸款 B");
+    await page.locator("#addLoanBtn").click();
+    await page.locator("#addLoanBtn").click();
+    const names = await page.locator('.loan-row input[data-field="name"]').allTextContents();
+    const values = await Promise.all(
+      (await page.locator('.loan-row input[data-field="name"]').all()).map(el => el.inputValue())
+    );
+    expect(values).toEqual(["", "", ""]);
+  });
+
+  test("placeholder has italic style for visual distinction", async ({ page }) => {
+    await setup(page);
+    await ensureLoanSectionOpen(page);
+    await switchLoanMode(page, "precise");
+    await page.locator("#addLoanBtn").click();
+    const fontStyle = await page.locator('.loan-row input[data-field="name"]').first().evaluate(el => {
+      // Access ::placeholder pseudo via getComputedStyle with pseudo argument
+      return getComputedStyle(el, "::placeholder").fontStyle;
+    });
+    expect(fontStyle).toBe("italic");
   });
 
   test("header row shows column labels once, per-row labels hidden", async ({ page }) => {
     await setup(page);
     await addLoanSimple(page, "房貸", "40,000", "240");
+    // Add a 2nd loan so name column appears (lazy name: 1 loan hides name)
+    await addLoanSimple(page, "車貸", "10,000", "60");
     // Header row should exist with column labels
     const header = page.locator(".loan-header");
     await expect(header).toBeVisible();
@@ -623,7 +910,7 @@ test.describe("P6: loan collapsible + dual mode", () => {
     const header = page.locator(".loan-header");
     await expect(header).toBeVisible();
     await expect(header).toContainText("名稱");
-    await expect(header).toContainText("貸款餘額");
+    await expect(header).toContainText("餘額");
     await expect(header).toContainText("年利率");
     await expect(header).toContainText("剩餘期數");
     await expect(header).toContainText("寬限期");
@@ -637,6 +924,124 @@ test.describe("P6: loan collapsible + dual mode", () => {
     await expect(display).toHaveCount(1);
     await expect(display).toContainText("40,851");
   });
+
+  test("editing balance updates monthly display", async ({ page }) => {
+    await setup(page);
+    await addLoanPrecise(page, "房貸", "8,000,000", "2.1", "240");
+    const display = page.locator('.loan-row .loan-monthly-display');
+    await expect(display).toContainText("40,851");
+    const balance = page.locator('.loan-row input[data-field="balance"]');
+    await balance.fill("4,000,000");
+    await balance.blur();
+    await page.waitForTimeout(300);
+    await expect(display).toContainText("20,425");
+  });
+
+  test("editing remainingMonths updates monthly display", async ({ page }) => {
+    await setup(page);
+    await addLoanPrecise(page, "房貸", "8,000,000", "2.1", "240");
+    const display = page.locator('.loan-row .loan-monthly-display');
+    const remaining = page.locator('.loan-row input[data-field="remainingMonths"]');
+    await remaining.fill("360");
+    await remaining.blur();
+    await page.waitForTimeout(300);
+    const text = await display.textContent();
+    expect(text).toContain("29,971");
+  });
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Simple mode lazy name field
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+test.describe("simple mode lazy name", () => {
+  test("1 筆貸款不顯示名稱欄", async ({ page }) => {
+    await setup(page);
+    await ensureLoanSectionOpen(page);
+    // simple mode is default
+    await page.locator("#addLoanBtn").click();
+    await page.waitForTimeout(200);
+    expect(await page.locator(".loan-row").count()).toBe(1);
+    expect(await page.locator('.loan-row input[data-field="name"]').count()).toBe(0);
+  });
+
+  test("1 筆貸款 header 不顯示名稱 label", async ({ page }) => {
+    await setup(page);
+    await ensureLoanSectionOpen(page);
+    await page.locator("#addLoanBtn").click();
+    await page.waitForTimeout(200);
+    const headerText = await page.locator(".loan-header").innerText();
+    expect(headerText).not.toContain("名稱");
+  });
+
+  test("2 筆貸款顯示名稱欄（每一筆）", async ({ page }) => {
+    await setup(page);
+    await ensureLoanSectionOpen(page);
+    await page.locator("#addLoanBtn").click();
+    await page.waitForTimeout(200);
+    await page.locator("#addLoanBtn").click();
+    await page.waitForTimeout(200);
+    expect(await page.locator(".loan-row").count()).toBe(2);
+    expect(await page.locator('.loan-row input[data-field="name"]').count()).toBe(2);
+  });
+
+  test("2 筆貸款 header 顯示名稱 label", async ({ page }) => {
+    await setup(page);
+    await ensureLoanSectionOpen(page);
+    await page.locator("#addLoanBtn").click();
+    await page.waitForTimeout(200);
+    await page.locator("#addLoanBtn").click();
+    await page.waitForTimeout(200);
+    const headerText = await page.locator(".loan-header").innerText();
+    expect(headerText).toContain("名稱");
+  });
+
+  test("加第二筆貸款時 focus 第一筆名稱欄", async ({ page }) => {
+    await setup(page);
+    await ensureLoanSectionOpen(page);
+    await page.locator("#addLoanBtn").click();
+    await page.waitForTimeout(200);
+    await page.locator("#addLoanBtn").click();
+    await page.waitForTimeout(300);
+    const focused = await page.evaluate(() => {
+      const el = document.activeElement;
+      if (!el) return null;
+      const row = el.closest(".loan-row");
+      return {
+        field: el.getAttribute("data-field"),
+        index: row ? row.getAttribute("data-index") : null,
+      };
+    });
+    expect(focused?.field).toBe("name");
+    expect(focused?.index).toBe("0");
+  });
+
+  test("從 2 筆刪到 1 筆 → 名稱欄消失", async ({ page }) => {
+    await setup(page);
+    await ensureLoanSectionOpen(page);
+    await page.locator("#addLoanBtn").click();
+    await page.waitForTimeout(200);
+    await page.locator("#addLoanBtn").click();
+    await page.waitForTimeout(200);
+    expect(await page.locator('.loan-row input[data-field="name"]').count()).toBe(2);
+
+    page.once("dialog", d => d.accept());
+    await page.locator(".loan-row").last().locator(".loan-remove-btn").click();
+    await page.waitForTimeout(300);
+
+    expect(await page.locator(".loan-row").count()).toBe(1);
+    expect(await page.locator('.loan-row input[data-field="name"]').count()).toBe(0);
+  });
+
+  test("精準模式不受影響：1 筆貸款仍顯示名稱欄", async ({ page }) => {
+    await setup(page);
+    await ensureLoanSectionOpen(page);
+    await page.locator(`#loansSection .loan-mode-toggle [data-mode="precise"]`).click();
+    await page.waitForTimeout(200);
+    await page.locator("#addLoanBtn").click();
+    await page.waitForTimeout(200);
+    expect(await page.locator('.loan-row input[data-field="name"]').count()).toBe(1);
+  });
 });
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -647,15 +1052,17 @@ test.describe("P7: loan name escaping", () => {
   test("loan name with double-quote renders correctly", async ({ page }) => {
     await setup(page);
     await ensureLoanSectionOpen(page);
+    // Use precise mode so name field is always visible
+    await switchLoanMode(page, "precise");
     await page.locator("#addLoanBtn").click();
     const nameInput = page.locator('.loan-row input[data-field="name"]');
     await nameInput.fill('貸款"test');
     await nameInput.blur();
     await page.waitForTimeout(300);
 
-    // Save and re-render by switching mode back and forth
-    await switchLoanMode(page, "precise");
+    // Re-render by switching mode back and forth (stays in precise after second switch)
     await switchLoanMode(page, "simple");
+    await switchLoanMode(page, "precise");
 
     // The input should still contain the name with the quote
     const val = await page.locator('.loan-row input[data-field="name"]').inputValue();
@@ -665,6 +1072,7 @@ test.describe("P7: loan name escaping", () => {
   test("loan name with HTML chars does not break rendering", async ({ page }) => {
     await setup(page);
     await ensureLoanSectionOpen(page);
+    await switchLoanMode(page, "precise");
     await page.locator("#addLoanBtn").click();
     const nameInput = page.locator('.loan-row input[data-field="name"]');
     await nameInput.fill('<script>alert(1)</script>');
@@ -672,8 +1080,8 @@ test.describe("P7: loan name escaping", () => {
     await page.waitForTimeout(300);
 
     // Re-render
-    await switchLoanMode(page, "precise");
     await switchLoanMode(page, "simple");
+    await switchLoanMode(page, "precise");
 
     // Should have exactly 1 loan row (not broken HTML)
     await expect(page.locator(".loan-row")).toHaveCount(1);
@@ -809,11 +1217,11 @@ test.describe("F1: table formula tooltips", () => {
 });
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// FIRE ratio excludes loans (standard definition)
+// FIRE ratio includes loans (revised definition)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 test.describe("FIRE ratio with loans", () => {
-  test("FIRE ratio uses expenses only, not loans (4% rule = perpetual expenses)", async ({ page }) => {
+  test("FIRE ratio with no loans is assets / expenses", async ({ page }) => {
     await setup(page);
     await page.locator("#p_assets").fill("10,000,000");
     await page.locator("#p_assets").blur();
@@ -821,26 +1229,52 @@ test.describe("FIRE ratio with loans", () => {
     await page.locator("#p_expenses").blur();
     await page.waitForTimeout(500);
 
-    // Without loans: 10,000,000 / 400,000 = 25.0
-    const noLoanText = await page.locator(".metric-card:nth-child(3) .value").textContent();
-    expect(noLoanText).toContain("25.0");
+    // 10,000,000 / 400,000 = 25.0
+    const text = await page.locator(".metric-card:nth-child(3) .value").textContent();
+    expect(text).toContain("25.0");
+  });
 
-    // Add loan — ratio should stay 25.0 (loans are temporary, not in FIRE formula)
+  test("FIRE ratio with loans is assets / (expenses + yearLoan)", async ({ page }) => {
+    await setup(page);
+    await page.locator("#p_assets").fill("10,000,000");
+    await page.locator("#p_assets").blur();
+    await page.locator("#p_expenses").fill("400,000");
+    await page.locator("#p_expenses").blur();
+    await page.waitForTimeout(300);
+
+    // Add loan 40k/month for 240 months → yearLoan = 480,000
+    // New ratio: 10,000,000 / (400,000 + 480,000) = 10,000,000 / 880,000 = 11.4
     await addLoanSimple(page, "房貸", "40,000", "240");
     await page.waitForTimeout(500);
 
-    const withLoanText = await page.locator(".metric-card:nth-child(3) .value").textContent();
-    expect(withLoanText).toContain("25.0");
+    const text = await page.locator(".metric-card:nth-child(3) .value").textContent();
+    expect(text).toContain("11.4");
   });
 
-  test("FIRE ratio info-tip explains loans excluded when loans exist", async ({ page }) => {
+  test("FIRE ratio info-tip mentions loans are now included", async ({ page }) => {
     await setup(page);
     await addLoanSimple(page, "房貸", "40,000", "240");
     await page.waitForTimeout(500);
     const tip = page.locator(".metric-card:nth-child(3) .info-tip");
     const tipText = await tip.getAttribute("data-tip");
     expect(tipText).toContain("貸款");
-    expect(tipText).toContain("暫時性");
+    // The tooltip should NOT use the old "暫時性" wording (which implied exclusion)
+    expect(tipText).not.toContain("暫時性");
+  });
+
+  test("expenses field has info-tip clarifying loans are excluded", async ({ page }) => {
+    await setup(page);
+    // Locate info-tip adjacent to the 支出 (expenses) label or field group
+    const tip = page.locator('label[for="p_expenses"] .info-tip, #p_expenses + .info-tip, .field[data-field="expenses"] .info-tip').first();
+    // Fallback: any info-tip in the same group as p_expenses
+    const tipText = await page.locator('#p_expenses').evaluate(el => {
+      const group = el.closest("label, .field, div");
+      if (!group) return null;
+      const tipEl = group.querySelector(".info-tip");
+      return tipEl ? tipEl.getAttribute("data-tip") : null;
+    });
+    expect(tipText).toBeTruthy();
+    expect(tipText).toContain("貸款");
   });
 });
 
@@ -957,6 +1391,26 @@ test.describe("F2: mobile advanced two-column grid", () => {
     // Should have exactly two columns (two values separated by space)
     const colValues = cols.split(/\s+/).filter(Boolean);
     expect(colValues.length).toBe(2);
+  });
+});
+
+test.describe("mobile precise loan layout", () => {
+  test("rate/remaining/grace all on one row on mobile", async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await setup(page);
+    await ensureLoanSectionOpen(page);
+    await page.locator("#addLoanBtn").click();
+    await switchLoanMode(page, "precise");
+    const row = page.locator(".loan-row").first();
+    const rateBox = await row.locator(".loan-cell-rate").boundingBox();
+    const remainingBox = await row.locator(".loan-cell-remaining").boundingBox();
+    const graceBox = await row.locator(".loan-cell-grace").boundingBox();
+    expect(rateBox).not.toBeNull();
+    expect(remainingBox).not.toBeNull();
+    expect(graceBox).not.toBeNull();
+    // All three on the same Y
+    expect(Math.abs(rateBox!.y - remainingBox!.y)).toBeLessThan(2);
+    expect(Math.abs(remainingBox!.y - graceBox!.y)).toBeLessThan(2);
   });
 });
 
