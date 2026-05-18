@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fire-v2.9';
+const CACHE_NAME = 'fire-v2.10';
 const PRECACHE = [
   '/fire/',
   '/fire/index.html',

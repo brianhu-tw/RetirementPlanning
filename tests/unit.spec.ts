@@ -17,6 +17,13 @@ async function fire(page: Page) {
     );
 }
 
+// Helper: set "current age" by filling birthYear = currentYear - age
+async function setAge(page: Page, age: number) {
+  const year = new Date().getFullYear() - age;
+  await page.locator("#p_birthYear").fill(String(year));
+  await page.locator("#p_birthYear").blur();
+}
+
 // ─── clamp ───
 test.describe("clamp", () => {
   test("clamps below min", async ({ page }) => {
@@ -124,7 +131,7 @@ test.describe("simulate", () => {
 
   test("feasible scenario: high income, low expense", async ({ page }) => {
     // Set DOM values for currentAge
-    await page.locator("#p_age").fill("30");
+    await setAge(page, 30);
     const result = await page.evaluate(() => {
       const f = (window as any).__FIRE__;
       return f.simulate(50, {
@@ -144,7 +151,7 @@ test.describe("simulate", () => {
   });
 
   test("infeasible scenario: zero income, high expense", async ({ page }) => {
-    await page.locator("#p_age").fill("30");
+    await setAge(page, 30);
     const result = await page.evaluate(() => {
       const f = (window as any).__FIRE__;
       return f.simulate(40, {
@@ -162,7 +169,7 @@ test.describe("simulate", () => {
   });
 
   test("custom return rate is used", async ({ page }) => {
-    await page.locator("#p_age").fill("30");
+    await setAge(page, 30);
     const [r1, r2] = await page.evaluate(() => {
       const f = (window as any).__FIRE__;
       const p = {
@@ -185,7 +192,7 @@ test.describe("simulate", () => {
   });
 
   test("income override changes the result", async ({ page }) => {
-    await page.locator("#p_age").fill("25");
+    await setAge(page, 25);
     const [rBase, rOverride] = await page.evaluate(() => {
       const f = (window as any).__FIRE__;
       const p = {
@@ -215,7 +222,7 @@ test.describe("findEarliest", () => {
   test("returns retirement age for normal scenario", async ({ page }) => {
     const call = await fire(page);
     // Set age to 25
-    await page.locator("#p_age").fill("25");
+    await setAge(page, 25);
     const earliest = await page.evaluate(() => {
       const f = (window as any).__FIRE__;
       return f.findEarliest({
@@ -234,7 +241,7 @@ test.describe("findEarliest", () => {
 
   test("returns null when retirement is impossible", async ({ page }) => {
     await fire(page);
-    await page.locator("#p_age").fill("30");
+    await setAge(page, 30);
     const earliest = await page.evaluate(() => {
       const f = (window as any).__FIRE__;
       return f.findEarliest({
@@ -252,7 +259,7 @@ test.describe("findEarliest", () => {
 
   test("boundary: already wealthy enough to retire immediately", async ({ page }) => {
     await fire(page);
-    await page.locator("#p_age").fill("40");
+    await setAge(page, 40);
     const earliest = await page.evaluate(() => {
       const f = (window as any).__FIRE__;
       return f.findEarliest({
@@ -363,7 +370,7 @@ test.describe("calcYearLoanPayment precise fallback to monthlyPayment", () => {
 test.describe("simulate with loans", () => {
   test("loans reduce portfolio compared to no-loans", async ({ page }) => {
     await fire(page);
-    await page.locator("#p_age").fill("30");
+    await setAge(page, 30);
     const [noLoan, withLoan] = await page.evaluate(() => {
       const f = (window as any).__FIRE__;
       const p = {
@@ -387,7 +394,7 @@ test.describe("simulate with loans", () => {
 
   test("simulate returns yearLoanPayments array", async ({ page }) => {
     await fire(page);
-    await page.locator("#p_age").fill("30");
+    await setAge(page, 30);
     const result = await page.evaluate(() => {
       const f = (window as any).__FIRE__;
       const p = {
@@ -414,7 +421,7 @@ test.describe("simulate with loans", () => {
 
   test("expGrowRate increases expenses beyond pure inflation", async ({ page }) => {
     await fire(page);
-    await page.locator("#p_age").fill("30");
+    await setAge(page, 30);
     const [noGrow, withGrow] = await page.evaluate(() => {
       const f = (window as any).__FIRE__;
       const base = {
@@ -440,7 +447,7 @@ test.describe("simulate with loans", () => {
 
   test("loan payments are not inflation-adjusted", async ({ page }) => {
     await fire(page);
-    await page.locator("#p_age").fill("30");
+    await setAge(page, 30);
     const result = await page.evaluate(() => {
       const f = (window as any).__FIRE__;
       const p = {
@@ -467,7 +474,7 @@ test.describe("simulate with loans", () => {
 test.describe("findEarliest with loans", () => {
   test("loans delay retirement age", async ({ page }) => {
     await fire(page);
-    await page.locator("#p_age").fill("25");
+    await setAge(page, 25);
     const [noLoan, withLoan] = await page.evaluate(() => {
       const f = (window as any).__FIRE__;
       const p = {
@@ -568,7 +575,7 @@ test.describe("simulate with startAge param", () => {
   test("uses p.startAge instead of DOM when provided", async ({ page }) => {
     await fire(page);
     // Set DOM age to 30 but pass startAge 40 in params
-    await page.locator("#p_age").fill("30");
+    await setAge(page, 30);
     const result = await page.evaluate(() => {
       const f = (window as any).__FIRE__;
       return f.simulate(50, {
@@ -589,7 +596,7 @@ test.describe("simulate with startAge param", () => {
 
   test("falls back to currentAge() when startAge is omitted", async ({ page }) => {
     await fire(page);
-    await page.locator("#p_age").fill("25");
+    await setAge(page, 25);
     const result = await page.evaluate(() => {
       const f = (window as any).__FIRE__;
       return f.simulate(50, {
@@ -705,6 +712,152 @@ test.describe("buildLoanFormula", () => {
   });
 });
 
+// ─── calcGraceMonthlyPaymentRange (按日計息範圍) ───
+test.describe("calcGraceMonthlyPaymentRange", () => {
+  test("回傳 28/31 天範圍 (中信房貸案例)", async ({ page }) => {
+    const call = await fire(page);
+    // 4,686,026 × 0.0219 / 365 = 281.1615 daily
+    // min (28 days) = round(281.1615 × 28) = 7,873
+    // max (31 days) = round(281.1615 × 31) = 8,716
+    const result = await call("calcGraceMonthlyPaymentRange", 4_686_026, 0.0219);
+    expect(result).toEqual({ min: 7873, max: 8716 });
+  });
+
+  test("min 永遠小於 max（28 < 31 天）", async ({ page }) => {
+    const call = await fire(page);
+    const r = await call("calcGraceMonthlyPaymentRange", 8_000_000, 0.021) as { min: number; max: number };
+    expect(r.min).toBeLessThan(r.max);
+  });
+
+  test("balance = 0 → {0, 0}", async ({ page }) => {
+    const call = await fire(page);
+    expect(await call("calcGraceMonthlyPaymentRange", 0, 0.0219)).toEqual({ min: 0, max: 0 });
+  });
+
+  test("rate = 0 → {0, 0}", async ({ page }) => {
+    const call = await fire(page);
+    expect(await call("calcGraceMonthlyPaymentRange", 5_000_000, 0)).toEqual({ min: 0, max: 0 });
+  });
+
+  test("年度總額 = balance × rate（28/30/31 天加總後）", async ({ page }) => {
+    const call = await fire(page);
+    // 平年: 7 × 31天 + 4 × 30天 + 1 × 28天 = 365 天
+    // daily = balance × rate / 365
+    // 年總 = daily × 365 = balance × rate
+    const balance = 5_000_000;
+    const rate = 0.02;
+    const r = await call("calcGraceMonthlyPaymentRange", balance, rate) as { min: number; max: number };
+    const daily = balance * rate / 365;
+    const m30 = Math.round(daily * 30);
+    // 加總 = min × 1 + max × 7 + m30 × 4 ≈ balance × rate
+    const annual = r.min * 1 + r.max * 7 + m30 * 4;
+    const expected = balance * rate;
+    // 允許進位誤差 ≤ 12 元（每月最多 ±0.5 元 × 12）
+    expect(Math.abs(annual - expected)).toBeLessThanOrEqual(12);
+  });
+});
+
+// ─── preciseAnnualPaymentText (precise 模式年繳顯示) ───
+test.describe("preciseAnnualPaymentText", () => {
+  test("無寬限：回傳年繳 = 月繳 × 12", async ({ page }) => {
+    const call = await fire(page);
+    // 4,800,000 / 240 = 20,000/月 (利率 0)，年繳 = 240,000
+    const loan = { name: "房貸", balance: 4_800_000, rate: 0, remainingMonths: 240, gracePeriodMonths: 0 };
+    const result = await call("preciseAnnualPaymentText", loan) as string;
+    expect(result).toContain("240,000");
+    expect(result).not.toContain("寬限");
+  });
+
+  test("有寬限：寬限期年繳 = balance × rate，之後 = monthly × 12", async ({ page }) => {
+    const call = await fire(page);
+    // 寬限年繳 = 6,000,000 × 0.02 = 120,000
+    const loan = { name: "房貸", balance: 6_000_000, rate: 0.02, remainingMonths: 240, gracePeriodMonths: 36 };
+    const result = await call("preciseAnnualPaymentText", loan) as string;
+    expect(result).toContain("寬限");
+    expect(result).toContain("之後");
+    expect(result).toContain("120,000");
+  });
+
+  test("中信案例（4,686,026 / 2.19%）寬限年繳 = 102,624", async ({ page }) => {
+    const call = await fire(page);
+    const loan = { name: "房貸", balance: 4_686_026, rate: 0.0219, remainingMonths: 326, gracePeriodMonths: 36 };
+    const result = await call("preciseAnnualPaymentText", loan) as string;
+    expect(result).toContain("102,624");
+  });
+
+  test("balance=0 + monthlyPayment>0 (legacy)：回傳 monthlyPayment × 12", async ({ page }) => {
+    const call = await fire(page);
+    const loan = { name: "信貸", monthlyPayment: 12000, balance: 0, rate: 0, remainingMonths: 60 };
+    const result = await call("preciseAnnualPaymentText", loan) as string;
+    expect(result).toContain("144,000");
+  });
+
+  test("空資料 → 回傳 —", async ({ page }) => {
+    const call = await fire(page);
+    const loan = { name: "新貸款", balance: 0, rate: 0, remainingMonths: 0, gracePeriodMonths: 0 };
+    const result = await call("preciseAnnualPaymentText", loan) as string;
+    expect(result).toBe("—");
+  });
+
+  test("寬限期 >= 剩餘期數 → 只顯示寬限年繳，不顯示「之後」", async ({ page }) => {
+    const call = await fire(page);
+    // rm=1, gp=1 → 整個貸款都在寬限期
+    const loan = { name: "短貸", balance: 1_000_000, rate: 0.01, remainingMonths: 1, gracePeriodMonths: 1 };
+    const result = await call("preciseAnnualPaymentText", loan) as string;
+    expect(result).toContain("寬限");
+    expect(result).toContain("10,000");
+    expect(result).not.toContain("之後");
+  });
+});
+
+// ─── buildMonthlyTooltip (年繳旁的月繳等價值 tooltip) ───
+test.describe("buildMonthlyTooltip", () => {
+  test("無寬限：回傳「≈ X/月」", async ({ page }) => {
+    const call = await fire(page);
+    const loan = { balance: 4_800_000, rate: 0, remainingMonths: 240, gracePeriodMonths: 0 };
+    const result = await call("buildMonthlyTooltip", loan) as string;
+    expect(result).toContain("≈");
+    expect(result).toContain("/月");
+    expect(result).toContain("20,000");
+    expect(result).not.toContain("寬限");
+  });
+
+  test("有寬限：回傳「寬限 ≈ A/月 → 之後 ≈ B/月」", async ({ page }) => {
+    const call = await fire(page);
+    const loan = { balance: 6_000_000, rate: 0.02, remainingMonths: 240, gracePeriodMonths: 36 };
+    const result = await call("buildMonthlyTooltip", loan) as string;
+    expect(result).toContain("寬限");
+    expect(result).toContain("之後");
+    expect(result).toContain("/月");
+    // grace monthly = 6,000,000 × 0.02 / 12 = 10,000
+    expect(result).toContain("10,000");
+  });
+
+  test("balance=0 + monthlyPayment>0 (legacy)：回傳 ≈ monthlyPayment/月", async ({ page }) => {
+    const call = await fire(page);
+    const loan = { balance: 0, monthlyPayment: 12000, rate: 0, remainingMonths: 60 };
+    const result = await call("buildMonthlyTooltip", loan) as string;
+    expect(result).toContain("12,000");
+    expect(result).toContain("/月");
+  });
+
+  test("空資料：回傳空字串", async ({ page }) => {
+    const call = await fire(page);
+    const loan = { balance: 0, rate: 0, remainingMonths: 0 };
+    expect(await call("buildMonthlyTooltip", loan)).toBe("");
+  });
+
+  test("寬限期 >= 剩餘期數 → tooltip 只顯示寬限月繳", async ({ page }) => {
+    const call = await fire(page);
+    // rm=1, gp=1 → 整個貸款都在寬限期
+    const loan = { balance: 1_000_000, rate: 0.01, remainingMonths: 1, gracePeriodMonths: 1 };
+    const result = await call("buildMonthlyTooltip", loan) as string;
+    // 寬限月繳 = 1,000,000 × 0.01 / 12 = 833
+    expect(result).toContain("833");
+    expect(result).not.toContain("之後");
+  });
+});
+
 // ─── calcYearLoanPayment with grace period ───
 test.describe("calcYearLoanPayment with grace period", () => {
   test("全年寬限期 → 只付利息", async ({ page }) => {
@@ -782,12 +935,17 @@ test.describe("calcYearLoanPayment with grace period", () => {
 
 // ─── buildLoanFormula with grace period ───
 test.describe("buildLoanFormula with grace period", () => {
-  test("寬限期內顯示利息標記", async ({ page }) => {
+  test("寬限期內顯示利息範圍（依當月天數）", async ({ page }) => {
     const call = await fire(page);
     const loans = [{ name: "房貸", monthlyPayment: 0, balance: 6_000_000, rate: 0.02, remainingMonths: 240, gracePeriodMonths: 36 }];
     const result = await call("buildLoanFormula", loans, 0, "precise");
     expect(result).toContain("寬限");
-    expect(result).toContain("10,000");
+    // daily = 6,000,000 × 0.02 / 365 = 328.767
+    // min (28 days) = round(328.767 × 28) = 9,205
+    // max (31 days) = round(328.767 × 31) = 10,192
+    expect(result).toContain("9,205");
+    expect(result).toContain("10,192");
+    expect(result).toContain("~");
   });
 
   test("跨年時分段顯示寬限 + 攤還", async ({ page }) => {

@@ -9,6 +9,15 @@ async function setup(page: Page) {
   await page.waitForFunction(() => (window as any).__FIRE__);
 }
 
+// Helper: set "current age" by filling birthYear = currentYear - age
+async function setAge(page: Page, age: number) {
+  const year = new Date().getFullYear() - age;
+  await page.locator("#p_birthYear").fill(String(year));
+  await page.locator("#p_birthYear").blur();
+}
+// Helper: convert age to corresponding birthYear (for inputValue/saved comparisons)
+const ageToBirthYear = (age: number) => String(new Date().getFullYear() - age);
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Default value placeholder styling (touched-state)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -16,7 +25,7 @@ async function setup(page: Page) {
 test.describe("default value placeholder styling", () => {
   test("untouched age field has placeholder-style class", async ({ page }) => {
     await setup(page);
-    const cls = await page.locator("#p_age").evaluate(el => el.classList.contains("placeholder-style"));
+    const cls = await page.locator("#p_birthYear").evaluate(el => el.classList.contains("placeholder-style"));
     expect(cls).toBe(true);
   });
 
@@ -34,55 +43,127 @@ test.describe("default value placeholder styling", () => {
 
   test("typing into a field removes placeholder-style", async ({ page }) => {
     await setup(page);
-    await page.locator("#p_age").fill("30");
+    await page.locator("#p_birthYear").fill("30");
     await page.waitForTimeout(200);
-    const cls = await page.locator("#p_age").evaluate(el => el.classList.contains("placeholder-style"));
+    const cls = await page.locator("#p_birthYear").evaluate(el => el.classList.contains("placeholder-style"));
     expect(cls).toBe(false);
   });
 
   test("touched state persists across reload", async ({ page }) => {
     await setup(page);
-    await page.locator("#p_age").fill("30");
-    await page.locator("#p_age").blur();
+    await page.locator("#p_birthYear").fill("30");
+    await page.locator("#p_birthYear").blur();
     await page.waitForTimeout(300);
     await page.reload();
     await page.waitForFunction(() => (window as any).__FIRE__);
-    const cls = await page.locator("#p_age").evaluate(el => el.classList.contains("placeholder-style"));
+    const cls = await page.locator("#p_birthYear").evaluate(el => el.classList.contains("placeholder-style"));
     expect(cls).toBe(false);
   });
 
   test("user explicitly entering default value (22) still counts as touched", async ({ page }) => {
     await setup(page);
-    await page.locator("#p_age").fill("22");
+    await page.locator("#p_birthYear").fill("22");
     await page.waitForTimeout(200);
-    const cls = await page.locator("#p_age").evaluate(el => el.classList.contains("placeholder-style"));
+    const cls = await page.locator("#p_birthYear").evaluate(el => el.classList.contains("placeholder-style"));
     expect(cls).toBe(false);
   });
 
   test("placeholder-style class produces italic style", async ({ page }) => {
     await setup(page);
-    const fontStyle = await page.locator("#p_age").evaluate(el => getComputedStyle(el).fontStyle);
+    const fontStyle = await page.locator("#p_birthYear").evaluate(el => getComputedStyle(el).fontStyle);
     expect(fontStyle).toBe("italic");
   });
 
   test("reset button clears touched state (fields revert to placeholder-style)", async ({ page }) => {
     await setup(page);
-    await page.locator("#p_age").fill("30");
+    await setAge(page, 30);
     await page.waitForTimeout(200);
     page.on("dialog", d => d.accept());
     await page.locator("#resetBtn").click();
     await page.waitForTimeout(300);
-    const cls = await page.locator("#p_age").evaluate(el => el.classList.contains("placeholder-style"));
+    const cls = await page.locator("#p_birthYear").evaluate(el => el.classList.contains("placeholder-style"));
     expect(cls).toBe(true);
   });
 
   test("other untouched fields remain placeholder when one field is touched", async ({ page }) => {
     await setup(page);
-    await page.locator("#p_age").fill("30");
+    await page.locator("#p_birthYear").fill("30");
     await page.waitForTimeout(200);
     // Age is now touched; income should still be placeholder
     const incomeCls = await page.locator("#p_income").evaluate(el => el.classList.contains("placeholder-style"));
     expect(incomeCls).toBe(true);
+  });
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// birthYear input + age derived + migration
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+test.describe("birthYear field", () => {
+  test("預設出生年 = 今年 - 22", async ({ page }) => {
+    await setup(page);
+    const yr = new Date().getFullYear();
+    expect(await page.locator("#p_birthYear").inputValue()).toBe(String(yr - 22));
+  });
+
+  test("ageDerived 顯示「= X 歲」", async ({ page }) => {
+    await setup(page);
+    // 預設應該是 = 22 歲
+    await expect(page.locator("#ageDerived")).toHaveText("= 22 歲");
+    // 改變出生年 → derived 跟著更新
+    await setAge(page, 35);
+    await expect(page.locator("#ageDerived")).toHaveText("= 35 歲");
+  });
+
+  test("舊版 localStorage p_age 自動遷移為 p_birthYear", async ({ page }) => {
+    await page.addInitScript(() => {
+      (window as any).__TEST__ = true;
+      localStorage.setItem("fire_params", JSON.stringify({ p_age: "35", p_income: "1,000,000" }));
+    });
+    await page.goto("/");
+    await page.waitForFunction(() => (window as any).__FIRE__);
+    const yr = new Date().getFullYear();
+    expect(await page.locator("#p_birthYear").inputValue()).toBe(String(yr - 35));
+  });
+
+  test("舊版 fire_touched_fields 的 p_age 遷移為 p_birthYear（觸碰狀態保留）", async ({ page }) => {
+    await page.addInitScript(() => {
+      (window as any).__TEST__ = true;
+      localStorage.setItem("fire_touched_fields", JSON.stringify(["p_age", "p_income"]));
+      // 同時 seed 對應的 params，否則 p_birthYear 會是預設值
+      localStorage.setItem("fire_params", JSON.stringify({ p_age: "35", p_income: "1,000,000" }));
+    });
+    await page.goto("/");
+    await page.waitForFunction(() => (window as any).__FIRE__);
+    // touched 標記已遷移：localStorage 內為 p_birthYear 而非 p_age
+    const touched = await page.evaluate(() => {
+      const raw = localStorage.getItem("fire_touched_fields");
+      return raw ? JSON.parse(raw) : [];
+    });
+    expect(touched).toContain("p_birthYear");
+    expect(touched).not.toContain("p_age");
+    expect(touched).toContain("p_income"); // 其他欄位不受影響
+    // 視覺上：p_birthYear 不應有 placeholder-style（觸碰狀態被保留）
+    const cls = await page.locator("#p_birthYear").evaluate(el => el.classList.contains("placeholder-style"));
+    expect(cls).toBe(false);
+  });
+
+  test("舊版 URL ?age= 自動遷移", async ({ page }) => {
+    await page.addInitScript(() => { (window as any).__TEST__ = true; });
+    await page.goto("/?age=30&shared=1");
+    await page.waitForFunction(() => (window as any).__FIRE__);
+    const yr = new Date().getFullYear();
+    expect(await page.locator("#p_birthYear").inputValue()).toBe(String(yr - 30));
+  });
+
+  test("reset 後 ageDerived 跟著刷新", async ({ page }) => {
+    await setup(page);
+    await setAge(page, 50);
+    await expect(page.locator("#ageDerived")).toHaveText("= 50 歲");
+    page.on("dialog", d => d.accept());
+    await page.locator("#resetBtn").click();
+    await page.waitForTimeout(300);
+    await expect(page.locator("#ageDerived")).toHaveText("= 22 歲");
   });
 });
 
@@ -451,7 +532,7 @@ test.describe("loan input font-size", () => {
     await setup(page);
     await addLoanSimple(page, "房貸", "40,000", "240");
     const loanFontSize = await page.locator('.loan-row input[data-field="monthlyPayment"]').evaluate(el => parseFloat(getComputedStyle(el).fontSize));
-    const mainFontSize = await page.locator("#p_age").evaluate(el => parseFloat(getComputedStyle(el).fontSize));
+    const mainFontSize = await page.locator("#p_birthYear").evaluate(el => parseFloat(getComputedStyle(el).fontSize));
     expect(loanFontSize).toBeLessThan(mainFontSize);
     // 0.9rem ≈ 14.4px at default 16px root
     expect(loanFontSize).toBeCloseTo(14.4, 1);
@@ -462,7 +543,7 @@ test.describe("loan input font-size", () => {
     // Open advanced section to ensure #p_etf is visible
     await page.locator("details.advanced summary").click();
     const selectFontSize = await page.locator("#p_etf").evaluate(el => parseFloat(getComputedStyle(el).fontSize));
-    const inputFontSize = await page.locator("#p_age").evaluate(el => parseFloat(getComputedStyle(el).fontSize));
+    const inputFontSize = await page.locator("#p_birthYear").evaluate(el => parseFloat(getComputedStyle(el).fontSize));
     expect(selectFontSize).toBeLessThan(inputFontSize);
     expect(selectFontSize).toBeCloseTo(14.4, 1);
   });
@@ -475,7 +556,8 @@ test.describe("loan field default value placeholder styling", () => {
     await switchLoanMode(page, "precise");
     await page.locator("#addLoanBtn").click();
     const row = page.locator(".loan-row").first();
-    for (const field of ["balance", "rate", "remainingMonths", "gracePeriodMonths"]) {
+    // gracePeriodMonths 預設摺疊成 + 按鈕，不在這裡檢查
+    for (const field of ["balance", "rate", "remainingMonths"]) {
       const cls = await row.locator(`input[data-field="${field}"]`).evaluate(el => el.classList.contains("placeholder-style"));
       expect(cls).toBe(true);
     }
@@ -557,25 +639,25 @@ test.describe("loan field default value placeholder styling", () => {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 test.describe("P2: validation", () => {
-  test("age > 80 shows range error", async ({ page }) => {
+  test("出生年超出範圍時顯示 range error", async ({ page }) => {
     await setup(page);
-    await page.locator("#p_age").fill("85");
-    // Trigger recalculate by blurring
-    await page.locator("#p_age").blur();
-    // Wait for debounce
+    // 85 is way below min birthYear (currentYear - 80)
+    await page.locator("#p_birthYear").fill("85");
+    await page.locator("#p_birthYear").blur();
     await page.waitForTimeout(400);
-    const err = page.locator("#err_age");
-    await expect(err).toHaveText("年齡需介於 0–80 歲");
-    await expect(page.locator("#p_age")).toHaveClass(/invalid/);
+    const err = page.locator("#err_birthYear");
+    const yr = new Date().getFullYear();
+    await expect(err).toHaveText(`出生年需介於 ${yr - 80}–${yr} 之間`);
+    await expect(page.locator("#p_birthYear")).toHaveClass(/invalid/);
   });
 
-  test("age as decimal shows integer error", async ({ page }) => {
+  test("出生年為小數時顯示 integer error", async ({ page }) => {
     await setup(page);
-    await page.locator("#p_age").fill("25.5");
-    await page.locator("#p_age").blur();
+    await page.locator("#p_birthYear").fill("2004.5");
+    await page.locator("#p_birthYear").blur();
     await page.waitForTimeout(400);
-    const err = page.locator("#err_age");
-    await expect(err).toHaveText("年齡須為整數");
+    const err = page.locator("#err_birthYear");
+    await expect(err).toHaveText("出生年須為整數");
   });
 
   test("return rate > 15 shows range error", async ({ page }) => {
@@ -648,19 +730,19 @@ test.describe("P3: user flows", () => {
     await page.locator("details.advanced summary").click();
 
     // Select VOO
-    await page.locator("#p_etf").selectOption("14");
+    await page.locator("#p_etf").selectOption("14.2");
     await page.waitForTimeout(400);
 
     const returnVal = await page.locator("#p_return").inputValue();
-    expect(returnVal).toBe("14");
+    expect(returnVal).toBe("14.2");
   });
 
   test("reset button restores defaults", async ({ page }) => {
     await setup(page);
 
     // Change some values
-    await page.locator("#p_age").fill("35");
-    await page.locator("#p_age").blur();
+    await page.locator("#p_birthYear").fill("35");
+    await page.locator("#p_birthYear").blur();
     await page.locator("#p_income").fill("1,000,000");
     await page.locator("#p_income").blur();
     await page.waitForTimeout(400);
@@ -671,7 +753,7 @@ test.describe("P3: user flows", () => {
     await page.waitForTimeout(400);
 
     // Verify defaults
-    expect(await page.locator("#p_age").inputValue()).toBe("22");
+    expect(await page.locator("#p_birthYear").inputValue()).toBe(ageToBirthYear(22));
     expect(await page.locator("#p_income").inputValue()).toBe("546,000");
     expect(await page.locator("#p_expenses").inputValue()).toBe("320,000");
     expect(await page.locator("#p_assets").inputValue()).toBe("0");
@@ -698,8 +780,8 @@ test.describe("P4: persistence", () => {
     await setup(page);
 
     // Change age and income
-    await page.locator("#p_age").fill("35");
-    await page.locator("#p_age").blur();
+    await page.locator("#p_birthYear").fill("35");
+    await page.locator("#p_birthYear").blur();
     await page.locator("#p_income").fill("800,000");
     await page.locator("#p_income").blur();
     await page.waitForTimeout(500);
@@ -709,7 +791,7 @@ test.describe("P4: persistence", () => {
     await page.waitForFunction(() => document.readyState === "complete");
 
     // Values should be restored
-    expect(await page.locator("#p_age").inputValue()).toBe("35");
+    expect(await page.locator("#p_birthYear").inputValue()).toBe("35");
     expect(await page.locator("#p_income").inputValue()).toBe("800,000");
   });
 
@@ -774,15 +856,15 @@ test.describe("P4: persistence", () => {
   test("URL params override localStorage", async ({ page }) => {
     // First set localStorage values
     await setup(page);
-    await page.locator("#p_age").fill("35");
-    await page.locator("#p_age").blur();
+    await page.locator("#p_birthYear").fill("35");
+    await page.locator("#p_birthYear").blur();
     await page.waitForTimeout(300);
 
     // Now navigate with URL params
     await page.goto("/?age=45&income=1200000&expenses=400000&return=8&inflation=2&incGrowRate=1&shared=1");
     await page.waitForFunction(() => document.readyState === "complete");
 
-    expect(await page.locator("#p_age").inputValue()).toBe("45");
+    expect(await page.locator("#p_birthYear").inputValue()).toBe(ageToBirthYear(45));
     expect(await page.locator("#p_income").inputValue()).toBe("1,200,000");
     expect(await page.locator("#p_expenses").inputValue()).toBe("400,000");
   });
@@ -922,15 +1004,15 @@ test.describe("P5: loans UI", () => {
     await expect(page.locator("#addLoanBtn")).toBeVisible();
   });
 
-  test("monthly payment display updates from balance/rate/months", async ({ page }) => {
+  test("annual payment display updates from balance/rate/months", async ({ page }) => {
     await setup(page);
     await addLoan(page, "房貸", "8,000,000", "2.1", "240");
     const row = page.locator(".loan-row").first();
-    const display = row.locator(".loan-monthly-display");
+    const display = row.locator(".loan-annual-display");
     await expect(display).toBeVisible();
     const text = await display.textContent();
-    // calcMonthlyPayment(8_000_000, 0.021, 240/12=20) = 40,851
-    expect(text).toContain("40,851");
+    // calcMonthlyPayment(8M, 0.021, 20) = 40,851 → annual = 490,212
+    expect(text).toContain("490,212");
   });
 
   test("loan balance clears '0' on focus", async ({ page }) => {
@@ -1078,14 +1160,15 @@ test.describe("P6: loan collapsible + dual mode", () => {
     await expect(row.locator('input[data-field="balance"]')).toBeVisible();
     await expect(row.locator('input[data-field="rate"]')).toBeVisible();
     await expect(row.locator('input[data-field="remainingMonths"]')).toBeVisible();
-    await expect(row.locator('input[data-field="gracePeriodMonths"]')).toBeVisible();
+    // gracePeriodMonths 預設摺疊成 + 按鈕
+    await expect(row.locator('.loan-grace-add')).toBeVisible();
     // time-based fields are gone
     await expect(row.locator('input[data-field="deductionDay"]')).toHaveCount(0);
     await expect(row.locator('input[data-field="startDate"]')).toHaveCount(0);
     await expect(row.locator('input[data-field="principal"]')).toHaveCount(0);
     await expect(row.locator('input[data-field="totalMonths"]')).toHaveCount(0);
-    // monthly-display element still exists
-    await expect(row.locator('.loan-monthly-display')).toHaveCount(1);
+    // annual-display element still exists
+    await expect(row.locator('.loan-annual-display')).toHaveCount(1);
   });
 
   test("precise→simple auto-fills monthlyPayment from calculation", async ({ page }) => {
@@ -1099,13 +1182,13 @@ test.describe("P6: loan collapsible + dual mode", () => {
     expect(val).toContain("40,851");
   });
 
-  test("simple→precise preserves monthlyPayment in monthly display", async ({ page }) => {
+  test("simple→precise preserves monthlyPayment as annual display", async ({ page }) => {
     await setup(page);
     await addLoanSimple(page, "房貸", "40,000", "240");
     await switchLoanMode(page, "precise");
-    // Monthly display should show the carried-over 40,000 (not "—" or 0)
-    const display = page.locator('.loan-row .loan-monthly-display');
-    await expect(display).toContainText("40,000");
+    // Annual display should show carried-over monthly × 12 = 480,000
+    const display = page.locator('.loan-row .loan-annual-display');
+    await expect(display).toContainText("480,000");
   });
 
   // ──────────────────────────────────────────────────────────────
@@ -1125,8 +1208,8 @@ test.describe("P6: loan collapsible + dual mode", () => {
     // remainingMonths preserved in DOM
     const rm = await page.locator('.loan-row input[data-field="remainingMonths"]').inputValue();
     expect(rm).toBe("240");
-    // Monthly display carries over from simple mode
-    await expect(page.locator('.loan-row .loan-monthly-display')).toContainText("40,000");
+    // Annual display = monthly × 12 = 480,000
+    await expect(page.locator('.loan-row .loan-annual-display')).toContainText("480,000");
     // Simulation invariant: retirement age unchanged
     const afterAge = await page.locator("#conclusion strong").textContent();
     expect(afterAge).toBe(beforeAge);
@@ -1296,39 +1379,42 @@ test.describe("P6: loan collapsible + dual mode", () => {
     await expect(header).toContainText("年利率");
     await expect(header).toContainText("剩餘期數");
     await expect(header).toContainText("寬限期");
-    await expect(header).toContainText("月付額");
+    await expect(header).toContainText("年繳");
   });
 
-  test("monthly display is a separate column in precise mode", async ({ page }) => {
+  test("annual display is a separate column in precise mode", async ({ page }) => {
     await setup(page);
     await addLoanPrecise(page, "房貸", "8,000,000", "2.1", "240");
-    const display = page.locator('.loan-row .loan-monthly-display');
+    const display = page.locator('.loan-row .loan-annual-display');
     await expect(display).toHaveCount(1);
-    await expect(display).toContainText("40,851");
+    // monthly 40,851 × 12 = 490,212
+    await expect(display).toContainText("490,212");
   });
 
-  test("editing balance updates monthly display", async ({ page }) => {
+  test("editing balance updates annual display", async ({ page }) => {
     await setup(page);
     await addLoanPrecise(page, "房貸", "8,000,000", "2.1", "240");
-    const display = page.locator('.loan-row .loan-monthly-display');
-    await expect(display).toContainText("40,851");
+    const display = page.locator('.loan-row .loan-annual-display');
+    await expect(display).toContainText("490,212");
     const balance = page.locator('.loan-row input[data-field="balance"]');
     await balance.fill("4,000,000");
     await balance.blur();
     await page.waitForTimeout(300);
-    await expect(display).toContainText("20,425");
+    // monthly 20,425 × 12 = 245,100
+    await expect(display).toContainText("245,100");
   });
 
-  test("editing remainingMonths updates monthly display", async ({ page }) => {
+  test("editing remainingMonths updates annual display", async ({ page }) => {
     await setup(page);
     await addLoanPrecise(page, "房貸", "8,000,000", "2.1", "240");
-    const display = page.locator('.loan-row .loan-monthly-display');
+    const display = page.locator('.loan-row .loan-annual-display');
     const remaining = page.locator('.loan-row input[data-field="remainingMonths"]');
     await remaining.fill("360");
     await remaining.blur();
     await page.waitForTimeout(300);
     const text = await display.textContent();
-    expect(text).toContain("29,971");
+    // monthly 29,971 × 12 = 359,652
+    expect(text).toContain("359,652");
   });
 });
 
@@ -1336,27 +1422,26 @@ test.describe("P6: loan collapsible + dual mode", () => {
 // Simple mode lazy name field
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-test.describe("simple mode lazy name", () => {
-  test("1 筆貸款不顯示名稱欄", async ({ page }) => {
+test.describe("loan name field", () => {
+  test("simple 模式 1 筆貸款顯示名稱欄", async ({ page }) => {
     await setup(page);
     await ensureLoanSectionOpen(page);
-    // simple mode is default
     await page.locator("#addLoanBtn").click();
     await page.waitForTimeout(200);
     expect(await page.locator(".loan-row").count()).toBe(1);
-    expect(await page.locator('.loan-row input[data-field="name"]').count()).toBe(0);
+    expect(await page.locator('.loan-row input[data-field="name"]').count()).toBe(1);
   });
 
-  test("1 筆貸款 header 不顯示名稱 label", async ({ page }) => {
+  test("simple 模式 1 筆貸款 header 顯示名稱 label", async ({ page }) => {
     await setup(page);
     await ensureLoanSectionOpen(page);
     await page.locator("#addLoanBtn").click();
     await page.waitForTimeout(200);
     const headerText = await page.locator(".loan-header").innerText();
-    expect(headerText).not.toContain("名稱");
+    expect(headerText).toContain("名稱");
   });
 
-  test("2 筆貸款顯示名稱欄（每一筆）", async ({ page }) => {
+  test("simple 模式 2 筆貸款顯示名稱欄（每一筆）", async ({ page }) => {
     await setup(page);
     await ensureLoanSectionOpen(page);
     await page.locator("#addLoanBtn").click();
@@ -1367,55 +1452,7 @@ test.describe("simple mode lazy name", () => {
     expect(await page.locator('.loan-row input[data-field="name"]').count()).toBe(2);
   });
 
-  test("2 筆貸款 header 顯示名稱 label", async ({ page }) => {
-    await setup(page);
-    await ensureLoanSectionOpen(page);
-    await page.locator("#addLoanBtn").click();
-    await page.waitForTimeout(200);
-    await page.locator("#addLoanBtn").click();
-    await page.waitForTimeout(200);
-    const headerText = await page.locator(".loan-header").innerText();
-    expect(headerText).toContain("名稱");
-  });
-
-  test("加第二筆貸款時 focus 第一筆名稱欄", async ({ page }) => {
-    await setup(page);
-    await ensureLoanSectionOpen(page);
-    await page.locator("#addLoanBtn").click();
-    await page.waitForTimeout(200);
-    await page.locator("#addLoanBtn").click();
-    await page.waitForTimeout(300);
-    const focused = await page.evaluate(() => {
-      const el = document.activeElement;
-      if (!el) return null;
-      const row = el.closest(".loan-row");
-      return {
-        field: el.getAttribute("data-field"),
-        index: row ? row.getAttribute("data-index") : null,
-      };
-    });
-    expect(focused?.field).toBe("name");
-    expect(focused?.index).toBe("0");
-  });
-
-  test("從 2 筆刪到 1 筆 → 名稱欄消失", async ({ page }) => {
-    await setup(page);
-    await ensureLoanSectionOpen(page);
-    await page.locator("#addLoanBtn").click();
-    await page.waitForTimeout(200);
-    await page.locator("#addLoanBtn").click();
-    await page.waitForTimeout(200);
-    expect(await page.locator('.loan-row input[data-field="name"]').count()).toBe(2);
-
-    page.once("dialog", d => d.accept());
-    await page.locator(".loan-row").last().locator(".loan-remove-btn").click();
-    await page.waitForTimeout(300);
-
-    expect(await page.locator(".loan-row").count()).toBe(1);
-    expect(await page.locator('.loan-row input[data-field="name"]').count()).toBe(0);
-  });
-
-  test("精準模式不受影響：1 筆貸款仍顯示名稱欄", async ({ page }) => {
+  test("精準模式 1 筆貸款顯示名稱欄", async ({ page }) => {
     await setup(page);
     await ensureLoanSectionOpen(page);
     await page.locator(`#loansSection .loan-mode-toggle [data-mode="precise"]`).click();
@@ -1734,7 +1771,7 @@ test.describe("F2: ETF return-group visibility", () => {
     await setup(page);
     await page.locator("details.advanced summary").click();
     const etf = page.locator("#p_etf");
-    expect(await etf.inputValue()).toBe("12.5");
+    expect(await etf.inputValue()).toBe("12.6");
     const returnGroup = page.locator("#return-group");
     await expect(returnGroup).toBeHidden();
   });
@@ -1756,10 +1793,10 @@ test.describe("F2: ETF return-group visibility", () => {
     await page.waitForTimeout(300);
     await expect(page.locator("#return-group")).toBeVisible();
     // Select VOO
-    await page.locator("#p_etf").selectOption("14");
+    await page.locator("#p_etf").selectOption("14.2");
     await page.waitForTimeout(300);
     await expect(page.locator("#return-group")).toBeHidden();
-    expect(await page.locator("#p_return").inputValue()).toBe("14");
+    expect(await page.locator("#p_return").inputValue()).toBe("14.2");
   });
 });
 
@@ -1994,16 +2031,59 @@ test.describe("PWA setup", () => {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 test.describe("grace period UI", () => {
-  test("precise mode directly shows grace period input (no checkbox)", async ({ page }) => {
+  test("precise mode 新增貸款時寬限期顯示「+ 寬限期」按鈕（無 input）", async ({ page }) => {
     await setup(page);
     await switchLoanMode(page, "precise");
     await page.locator("#addLoanBtn").click();
     await page.waitForTimeout(200);
+    // 預設摺疊：button 可見、input 不存在
+    await expect(page.locator('.loan-row .loan-grace-add')).toBeVisible();
+    await expect(page.locator('.loan-row input[data-field="gracePeriodMonths"]')).toHaveCount(0);
+  });
+
+  test("點擊「+ 寬限期」→ input 出現並 focus", async ({ page }) => {
+    await setup(page);
+    await switchLoanMode(page, "precise");
+    await page.locator("#addLoanBtn").click();
+    await page.waitForTimeout(200);
+    await page.locator('.loan-row .loan-grace-add').click();
+    await page.waitForTimeout(200);
+    // button 消失、input 出現並 focus
+    await expect(page.locator('.loan-row .loan-grace-add')).toHaveCount(0);
     const graceInput = page.locator('.loan-row input[data-field="gracePeriodMonths"]');
     await expect(graceInput).toBeVisible();
-    expect(await graceInput.inputValue()).toBe("0");
-    // No checkbox should exist
-    await expect(page.locator('.loan-row .grace-toggle')).toHaveCount(0);
+    const focusedField = await page.evaluate(() => (document.activeElement as HTMLElement)?.getAttribute('data-field'));
+    expect(focusedField).toBe("gracePeriodMonths");
+  });
+
+  test("寬限期填值後改回 0 → 還原成 + 按鈕", async ({ page }) => {
+    await setup(page);
+    await addLoanPrecise(page, "房貸", "8,000,000", "2.1", "360");
+    // 展開填 36
+    await page.locator('.loan-row .loan-grace-add').click();
+    await page.waitForTimeout(200);
+    await page.locator('.loan-row input[data-field="gracePeriodMonths"]').fill("36");
+    await page.locator('.loan-row input[data-field="gracePeriodMonths"]').blur();
+    await page.waitForTimeout(400);
+    // 改回 0
+    await page.locator('.loan-row input[data-field="gracePeriodMonths"]').fill("0");
+    await page.locator('.loan-row input[data-field="gracePeriodMonths"]').blur();
+    await page.waitForTimeout(400);
+    // 還原成按鈕
+    await expect(page.locator('.loan-row .loan-grace-add')).toBeVisible();
+    await expect(page.locator('.loan-row input[data-field="gracePeriodMonths"]')).toHaveCount(0);
+  });
+
+  test("點開「+ 寬限期」但沒填值就 blur → 立即還原", async ({ page }) => {
+    await setup(page);
+    await addLoanPrecise(page, "房貸", "8,000,000", "2.1", "360");
+    await page.locator('.loan-row .loan-grace-add').click();
+    await page.waitForTimeout(200);
+    // 不填值，blur（focus 別的欄位）
+    await page.locator('.loan-row input[data-field="balance"]').focus();
+    await page.waitForTimeout(400);
+    // 還原成按鈕
+    await expect(page.locator('.loan-row .loan-grace-add')).toBeVisible();
   });
 
   test("simple mode does not show grace period input", async ({ page }) => {
@@ -2015,36 +2095,68 @@ test.describe("grace period UI", () => {
     await expect(graceInput).toHaveCount(0);
   });
 
-  test("filling grace period months shows dual monthly display", async ({ page }) => {
+  test("filling grace period months shows annual display", async ({ page }) => {
     await setup(page);
     await addLoanPrecise(page, "房貸", "8,000,000", "2.1", "360");
-    // Grace input should already be visible — fill it directly
+    await page.locator('.loan-row .loan-grace-add').click();
+    await page.waitForTimeout(200);
     await page.locator('.loan-row input[data-field="gracePeriodMonths"]').fill("36");
     await page.locator('.loan-row input[data-field="gracePeriodMonths"]').blur();
     await page.waitForTimeout(400);
-    // Should show grace period amount AND normal amount
-    const display = page.locator('.loan-row .loan-monthly-display');
+    // Should show grace period annual + normal annual
+    const display = page.locator('.loan-row .loan-annual-display');
     const text = await display.textContent();
     expect(text).toContain("寬限");
-    // Grace monthly = 8,000,000 × 0.021 / 12 = 14,000
-    expect(text).toContain("14,000");
+    expect(text).toContain("之後");
+    // grace annual = 8,000,000 × 0.021 = 168,000
+    expect(text).toContain("168,000");
   });
 
-  test("grace period 0 shows normal monthly payment", async ({ page }) => {
+  test("年繳 info-tip 顯示對應月繳（驗證用）", async ({ page }) => {
+    await setup(page);
+    await addLoanPrecise(page, "房貸", "4,686,026", "2.19", "326");
+
+    // precise 模式有 balance + rate → 永遠顯示 info-tip
+    await expect(page.locator('.loan-cell-annual .info-tip')).toHaveCount(1);
+
+    // 沒寬限：tooltip 顯示單一月繳近似值
+    let dataTip = await page.locator('.loan-cell-annual .info-tip').getAttribute('data-tip');
+    expect(dataTip).toContain('/月');
+    expect(dataTip).not.toContain('寬限');
+
+    // 加寬限期 → tooltip 變成「寬限 → 之後」格式
+    await page.locator('.loan-row .loan-grace-add').click();
+    await page.waitForTimeout(200);
+    await page.locator('.loan-row input[data-field="gracePeriodMonths"]').fill("36");
+    await page.locator('.loan-row input[data-field="gracePeriodMonths"]').blur();
+    await page.waitForTimeout(400);
+
+    dataTip = await page.locator('.loan-cell-annual .info-tip').getAttribute('data-tip');
+    expect(dataTip).toContain('寬限');
+    expect(dataTip).toContain('之後');
+    expect(dataTip).toContain('/月');
+    // grace monthly = 4,686,026 × 0.0219 / 12 = 8,552
+    expect(dataTip).toContain('8,552');
+  });
+
+  test("grace period 0 shows annual amount only", async ({ page }) => {
     await setup(page);
     await addLoanPrecise(page, "房貸", "8,000,000", "2.1", "240");
-    const graceInput = page.locator('.loan-row input[data-field="gracePeriodMonths"]');
-    expect(await graceInput.inputValue()).toBe("0");
-    // Monthly display should show normal payment, no 寬限 text
-    const display = page.locator('.loan-row .loan-monthly-display');
+    // 寬限期摺疊狀態 → input 不存在，「+ 寬限期」按鈕可見
+    await expect(page.locator('.loan-row .loan-grace-add')).toBeVisible();
+    // Annual display: no 寬限, just annual value
+    const display = page.locator('.loan-row .loan-annual-display');
     const text = await display.textContent();
     expect(text).not.toContain("寬限");
-    expect(text).toContain("40,851");
+    // monthly ≈ 40,851 → annual ≈ 490,212
+    expect(text).toContain("490,212");
   });
 
   test("grace period persists across reload", async ({ page }) => {
     await setup(page);
     await addLoanPrecise(page, "房貸", "8,000,000", "2.1", "360");
+    await page.locator('.loan-row .loan-grace-add').click();
+    await page.waitForTimeout(200);
     await page.locator('.loan-row input[data-field="gracePeriodMonths"]').fill("36");
     await page.locator('.loan-row input[data-field="gracePeriodMonths"]').blur();
     await page.waitForTimeout(400);
@@ -2059,6 +2171,8 @@ test.describe("grace period UI", () => {
   test("precise→simple switch uses grace period monthly for auto-fill", async ({ page }) => {
     await setup(page);
     await addLoanPrecise(page, "房貸", "8,000,000", "2.1", "360");
+    await page.locator('.loan-row .loan-grace-add').click();
+    await page.waitForTimeout(200);
     await page.locator('.loan-row input[data-field="gracePeriodMonths"]').fill("36");
     await page.locator('.loan-row input[data-field="gracePeriodMonths"]').blur();
     await page.waitForTimeout(400);
@@ -2079,8 +2193,8 @@ test.describe("shared link protection", () => {
   test("URL params do not overwrite localStorage", async ({ page }) => {
     // Set own values
     await setup(page);
-    await page.locator("#p_age").fill("35");
-    await page.locator("#p_age").blur();
+    await page.locator("#p_birthYear").fill("35");
+    await page.locator("#p_birthYear").blur();
     await page.locator("#p_income").fill("1,500,000");
     await page.locator("#p_income").blur();
     await page.waitForTimeout(400);
@@ -2090,7 +2204,7 @@ test.describe("shared link protection", () => {
     await page.waitForFunction(() => document.readyState === "complete");
 
     // Screen shows URL values
-    expect(await page.locator("#p_age").inputValue()).toBe("45");
+    expect(await page.locator("#p_birthYear").inputValue()).toBe(ageToBirthYear(45));
     expect(await page.locator("#p_income").inputValue()).toBe("900,000");
 
     // localStorage should still have own values (not shared)
@@ -2098,7 +2212,7 @@ test.describe("shared link protection", () => {
       const raw = localStorage.getItem("fire_params");
       return raw ? JSON.parse(raw) : null;
     });
-    expect(saved.p_age).toBe("35");
+    expect(saved.p_birthYear).toBe("35");
     expect(saved.p_income).toBe("1,500,000");
   });
 
@@ -2113,15 +2227,15 @@ test.describe("shared link protection", () => {
     await page.waitForFunction(() => (window as any).__FIRE__);
 
     // Still shows shared values
-    expect(await page.locator("#p_age").inputValue()).toBe("45");
+    expect(await page.locator("#p_birthYear").inputValue()).toBe(ageToBirthYear(45));
     expect(page.url()).toContain("shared=1");
   });
 
   test("editing a field in shared view does NOT save to localStorage", async ({ page }) => {
     // Save own values first
     await setup(page);
-    await page.locator("#p_age").fill("28");
-    await page.locator("#p_age").blur();
+    await page.locator("#p_birthYear").fill("28");
+    await page.locator("#p_birthYear").blur();
     await page.waitForTimeout(400);
 
     // Open shared link
@@ -2129,8 +2243,8 @@ test.describe("shared link protection", () => {
     await page.waitForFunction(() => document.readyState === "complete");
 
     // Edit a field
-    await page.locator("#p_age").fill("42");
-    await page.locator("#p_age").blur();
+    await page.locator("#p_birthYear").fill("42");
+    await page.locator("#p_birthYear").blur();
     await page.waitForTimeout(400);
 
     // localStorage should still have own values (edits were NOT saved)
@@ -2138,25 +2252,25 @@ test.describe("shared link protection", () => {
       const raw = localStorage.getItem("fire_params");
       return raw ? JSON.parse(raw) : null;
     });
-    expect(saved.p_age).toBe("28");
+    expect(saved.p_birthYear).toBe("28");
   });
 
   test("removing URL params restores localStorage values", async ({ page }) => {
     // Save own values first
     await setup(page);
-    await page.locator("#p_age").fill("28");
-    await page.locator("#p_age").blur();
+    await page.locator("#p_birthYear").fill("28");
+    await page.locator("#p_birthYear").blur();
     await page.waitForTimeout(400);
 
     // Open shared link
     await page.goto("/?age=45&income=900000&shared=1");
     await page.waitForFunction(() => document.readyState === "complete");
-    expect(await page.locator("#p_age").inputValue()).toBe("45");
+    expect(await page.locator("#p_birthYear").inputValue()).toBe(ageToBirthYear(45));
 
     // Navigate without URL params → restores own values
     await page.goto("/");
     await page.waitForFunction(() => document.readyState === "complete");
-    expect(await page.locator("#p_age").inputValue()).toBe("28");
+    expect(await page.locator("#p_birthYear").inputValue()).toBe("28");
   });
 
   test("shared banner visible when URL params present, hidden otherwise", async ({ page }) => {
@@ -2171,14 +2285,14 @@ test.describe("shared link protection", () => {
   test("clicking back-to-my-data clears URL and restores own values", async ({ page }) => {
     // Save own values
     await setup(page);
-    await page.locator("#p_age").fill("28");
-    await page.locator("#p_age").blur();
+    await page.locator("#p_birthYear").fill("28");
+    await page.locator("#p_birthYear").blur();
     await page.waitForTimeout(400);
 
     // Open shared link
     await page.goto("/?age=50&income=2000000&shared=1");
     await page.waitForFunction(() => document.readyState === "complete");
-    expect(await page.locator("#p_age").inputValue()).toBe("50");
+    expect(await page.locator("#p_birthYear").inputValue()).toBe(ageToBirthYear(50));
     await expect(page.locator("#shared-banner")).toBeVisible();
 
     // Click button
@@ -2186,7 +2300,7 @@ test.describe("shared link protection", () => {
     await page.waitForTimeout(400);
 
     // Own values restored, banner gone, URL clean
-    expect(await page.locator("#p_age").inputValue()).toBe("28");
+    expect(await page.locator("#p_birthYear").inputValue()).toBe("28");
     await expect(page.locator("#shared-banner")).toBeHidden();
     expect(page.url()).not.toContain("age=");
   });
