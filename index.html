@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>幾歲能退休？退休金計算模擬器 | FIRE 財務自由規劃</title>
+<title>FIRE 退休計算機｜幾歲能財務自由？</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏖️</text></svg>">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
@@ -19,7 +19,7 @@
 <!-- Open Graph -->
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://brianhu-tw.github.io/fire/">
-<meta property="og:title" content="幾歲能退休？退休金計算模擬器">
+<meta property="og:title" content="FIRE 退休計算機｜幾歲能財務自由？">
 <meta property="og:description" content="填幾個數字，算算你的退休時間表。看看不同報酬率下，你的錢夠不夠花。">
 <meta property="og:locale" content="zh_TW">
 <meta property="og:image" content="https://brianhu-tw.github.io/fire/og-image.svg">
@@ -100,6 +100,7 @@
     margin-bottom: 2rem;
   }
   header h1 { font-size: 2rem; font-weight: 700; letter-spacing: 0.05em; }
+  header h1 span { display: block; font-size: 1rem; font-weight: 500; color: var(--text-muted); letter-spacing: 0.03em; margin-top: 0.2rem; }
   header p { color: var(--text-muted); margin-top: 0.5rem; font-size: 0.95rem; }
 
   /* ── Metric Cards ── */
@@ -719,7 +720,7 @@
 <div class="container">
 
 <header>
-  <h1>幾歲能退休？</h1>
+  <h1>幾歲能退休？<span>FIRE 財務自由計算機</span></h1>
   <p>是還要工作多久？假設每年存下的錢都投入大盤，來看看什麼時候能財富自由</p>
 </header>
 
@@ -913,7 +914,7 @@
 
 <footer>
   <p>此分析僅供參考，不構成投資建議。實際報酬率會波動，當個方向參考就好。</p>
-  <p style="margin-top:0.3rem;">幾歲能退休？ v2.10 &copy; 2026 brianhu-tw</p>
+  <p style="margin-top:0.3rem;">幾歲能退休？ v2.11 &copy; 2026 brianhu-tw</p>
 </footer>
 
 </div>
@@ -1920,7 +1921,7 @@ function restoreSectionStates() {
   } else {
     // First visit fallback: heuristic open
     if (loans.length > 0) document.getElementById("loansSection").open = true;
-    if (+document.getElementById("p_return").value !== 12.5 || +document.getElementById("p_inflation").value !== 3 || +document.getElementById("p_incGrowRate").value !== 0 || +document.getElementById("p_expGrowRate").value !== 0) {
+    if (+document.getElementById("p_return").value !== +DEFAULTS.p_return || +document.getElementById("p_inflation").value !== +DEFAULTS.p_inflation || +document.getElementById("p_incGrowRate").value !== +DEFAULTS.p_incGrowRate || +document.getElementById("p_expGrowRate").value !== +DEFAULTS.p_expGrowRate) {
       document.querySelector("details.advanced").open = true;
     }
   }
