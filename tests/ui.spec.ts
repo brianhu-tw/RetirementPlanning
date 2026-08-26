@@ -2361,3 +2361,50 @@ test.describe("mobile drag label offset", () => {
     await ctx.close();
   });
 });
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Income handle crossing retirement handle (FI ≠ RE fade)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+test.describe("income handle crossing retirement handle", () => {
+  test("dragging income handle past retirement handle fades the retirement marker", async ({ page }) => {
+    await setup(page);
+    await setAge(page, 30);
+    await page.locator("#chart3").scrollIntoViewIfNeeded();
+    await page.waitForTimeout(300);
+
+    const callFaded = () => page.evaluate(() => (window as any).__FIRE__.c3RetireFaded());
+
+    expect(await callFaded()).toBe(false);
+
+    const canvas = page.locator("#chart3");
+    const box = await canvas.boundingBox();
+    if (!box) throw new Error("no canvas bounding box");
+
+    const { incPos, retPos } = await page.evaluate(() => {
+      const f = (window as any).__FIRE__;
+      return { incPos: f.c3IncHandlePos(), retPos: f.c3RetireHandlePos() };
+    });
+
+    const startX = box.x + incPos.x;
+    const startY = box.y + incPos.y;
+    const targetX = box.x + retPos.x + 120; // well past the retirement handle
+
+    await page.evaluate(({ startX, startY, targetX }) => {
+      const canvas = document.getElementById("chart3")!;
+      const opts = (x: number, y: number) => ({
+        bubbles: true, clientX: x, clientY: y, pointerId: 1, pointerType: "mouse"
+      });
+      canvas.dispatchEvent(new PointerEvent("pointerdown", opts(startX, startY)));
+      const steps = 10;
+      for (let i = 1; i <= steps; i++) {
+        const x = startX + (targetX - startX) * (i / steps);
+        canvas.dispatchEvent(new PointerEvent("pointermove", opts(x, startY)));
+      }
+      canvas.dispatchEvent(new PointerEvent("pointerup", opts(targetX, startY)));
+    }, { startX, startY, targetX });
+    await page.waitForTimeout(200);
+
+    expect(await callFaded()).toBe(true);
+  });
+});

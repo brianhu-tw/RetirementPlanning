@@ -215,6 +215,48 @@ test.describe("simulate", () => {
     const retIdx = 50 - 25; // index for age 50
     expect(rOverride.reals[retIdx]).toBeGreaterThan(rBase.reals[retIdx]);
   });
+
+  test("income override starting after retirement keeps income flowing through the gap (FI ≠ RE)", async ({ page }) => {
+    await setAge(page, 25);
+    const result = await page.evaluate(() => {
+      const f = (window as any).__FIRE__;
+      const p = {
+        assets: 0,
+        income: 500_000,
+        expenses: 300_000,
+        nomReturn: 0.07,
+        inflation: 0.03,
+        incGrowRate: 0,
+        deathAge: 90,
+      };
+      return f.simulate(40, p, undefined, { startAge: 45, amount: 800_000 });
+    });
+    const idx = (age: number) => age - 25;
+    // Gap years (40..44): retirement age has passed but income keeps flowing at the original level
+    expect(result.yearIncomes[idx(40)]).toBe(500_000);
+    expect(result.yearIncomes[idx(44)]).toBe(500_000);
+    // From the override age onward: the new income amount
+    expect(result.yearIncomes[idx(45)]).toBe(800_000);
+    expect(result.yearIncomes[idx(46)]).toBe(800_000);
+  });
+
+  test("income override starting exactly at retirement age applies with no gap", async ({ page }) => {
+    await setAge(page, 25);
+    const result = await page.evaluate(() => {
+      const f = (window as any).__FIRE__;
+      const p = {
+        assets: 0,
+        income: 500_000,
+        expenses: 300_000,
+        nomReturn: 0.07,
+        inflation: 0.03,
+        incGrowRate: 0,
+        deathAge: 90,
+      };
+      return f.simulate(40, p, undefined, { startAge: 40, amount: 800_000 });
+    });
+    expect(result.yearIncomes[40 - 25]).toBe(800_000);
+  });
 });
 
 // ─── findEarliest ───

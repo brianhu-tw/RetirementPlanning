@@ -23,10 +23,10 @@ Tests require the dev server on port 3000 (`npx serve . -l 3000`); Playwright st
 
 ### Architecture
 
-- All JS lives inside a single `DOMContentLoaded` closure in `index.html` (~1550 lines total: CSS → HTML → JS)
+- All JS lives inside a single `DOMContentLoaded` closure in `index.html` (~2800 lines total: CSS → HTML → JS)
 - Key pure functions: `clamp`, `stripCommas`/`addCommas`, `hexAlpha`, `simulate`, `findEarliest`, `c3Returns`
 - Input helpers: `initMoneyInput(el, opts)` for money fields, `initNumberInput(el, opts)` for numeric fields — see `/input-fields` skill for full spec
-- `simulate(retireAge, params, customReturn?, incomeOverride?)` — core simulation engine, returns `{feasible, ages[], reals[], minPort}`
+- `simulate(retireAge, params, customReturn?, incomeOverride?, loans?, lMode?)` — core simulation engine, returns `{feasible, ages[], reals[], minPort}`
 - `findEarliest(params)` — binary-searches for the earliest feasible retirement age
 - `recalculate()` — reads DOM inputs, runs simulation, updates chart and conclusion
 - Tests access internals via `window.__TEST__` flag which exposes `window.__FIRE__` bridge with all key functions

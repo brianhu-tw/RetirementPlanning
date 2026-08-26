@@ -1143,7 +1143,10 @@ const Simulation = (() => {
       const loanPay = calcYearLoanPayment(loans || [], age - startAge, lMode);
       yearLoanPayments.push(loanPay);
 
-      if (age < retireAge) {
+      // A future income change dragged past retirement means the person is still
+      // earning at that point (FI reached ≠ actually retired) — income keeps flowing.
+      const crossed = incomeOverride && incomeOverride.startAge >= retireAge;
+      if (crossed || age < retireAge) {
         let inc = p.income;
         let incGrowthYears = age - startAge;
         if (incomeOverride && age >= incomeOverride.startAge) {
@@ -2218,6 +2221,10 @@ function c3GetIncOverride() {
   if (!c3IncHasMoved()) return undefined;
   return { startAge: c3IncAge, amount: c3IncAmount * 1e4 };
 }
+// Income handle dragged at/past the retirement age: person reached FI but hasn't actually retired (RE) yet.
+function c3RetireFaded() {
+  return c3IncHasMoved() && c3IncAge >= c3RetireAge;
+}
 // Handle/label Y helpers — mobile: handle at bottom (thumb-friendly), desktop: handle at top
 function retireHandleY(top, bottom, mob) {
   return top + 28;
@@ -2336,10 +2343,11 @@ const dragLinePlugin = {
     }
     ctx.restore();
 
-    // ── Retirement line (purple) ──
+    // ── Retirement line (purple) — faded once the income handle crosses it: FI reached, RE deferred ──
     const lineX = c3AgeToX(chart);
     const retActive = c3Dragging || c3Hovered;
     ctx.save();
+    ctx.globalAlpha = c3RetireFaded() ? 0.35 : 1;
     ctx.beginPath(); ctx.moveTo(lineX, top); ctx.lineTo(lineX, bottom);
     ctx.lineWidth = retActive ? 3 : 2; ctx.strokeStyle = c3Dragging ? "#818cf8" : "#6366f1";
     ctx.setLineDash([6, 4]); ctx.stroke(); ctx.setLineDash([]);
@@ -2393,9 +2401,11 @@ function updateC3Summary(p) {
   } else {
     incPart = `年收 <b>${c3IncOrigAmount} 萬</b>${growthNote}`;
   }
-  const workYears = c3RetireAge - age;
+  const retirePart = c3RetireFaded()
+    ? `<b>${c3RetireAge} 歲</b>已達可退休門檻，但工作到 <b>${c3IncAge} 歲</b>`
+    : `<b>${c3RetireAge} 歲</b>退休（工作 ${Math.max(0, c3RetireAge - age)} 年）`;
   el.innerHTML = `假設${incPart}，`
-    + `<b>${c3RetireAge} 歲</b>退休（工作 ${Math.max(0, workYears)} 年），`
+    + `${retirePart}，`
     + `年支出 <b>${(p.expenses/1e4).toFixed(0)} 萬</b>，`
     + `把存下的錢投入大盤，來看看夠不夠花`;
 }
@@ -2803,13 +2813,18 @@ if (window.__TEST__) {
     escAttr, buildLoanFormula,
     c3Returns, hexAlpha, validateAll, getParams, recalculate,
     currentAge, saveParams, restoreParams, VALIDATIONS, DEFAULTS,
-    retireHandleY, incLabelY,
+    retireHandleY, incLabelY, c3RetireFaded,
     c3RetireHandlePos() {
       const chart = charts.c3;
       if (!chart) return { x: 0, y: 0 };
       const mob = window.innerWidth <= 900;
       const { top, bottom } = chart.chartArea;
       return { x: c3AgeToX(chart), y: retireHandleY(top, bottom, mob) };
+    },
+    c3IncHandlePos() {
+      const chart = charts.c3;
+      if (!chart) return { x: 0, y: 0 };
+      return { x: c3IncAgeToX(chart), y: c3IncAmountToY(chart) };
     },
     get loans() { return loans; },
     get loanMode() { return loanMode; }
